@@ -860,25 +860,40 @@ const checkJwt = auth({
 });
 ```
 
+Current minimal user sync:
+
+```txt
+GET /api/v1/me
+Authorization: Bearer <access token>
+```
+
+The backend validates the access token, uses the token subject as the Auth0 identity key, extracts available basic profile claims from the verified token payload, creates or updates the local user, then returns the database user.
+
+For local Auth0 setup, add a Post Login Action that writes these namespaced custom claims into the API access token:
+
+```txt
+https://api.udbhavi.local/email
+https://api.udbhavi.local/name
+```
+
+See `docs/Auth0UserClaimsAction.md`.
+
 User sync middleware:
 
 ```ts
 async function syncUser(req, res, next) {
   const auth0Sub = req.auth.payload.sub;
+  const { name, email } = req.auth.payload;
 
   const user = await User.findOneAndUpdate(
     { auth0Sub },
     {
+      $set: {
+        name,
+        email
+      },
       $setOnInsert: {
-        auth0Sub,
-        plan: "free",
-        role: "user",
-        limits: {
-          maxProjects: 3,
-          dailyAiCalls: 20,
-          dailyUploads: 5,
-          dailyCompiles: 50
-        }
+        auth0Sub
       }
     },
     { upsert: true, new: true }

@@ -19,38 +19,6 @@ const userSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
-    avatarUrl: {
-      type: String,
-      trim: true,
-    },
-    plan: {
-      type: String,
-      enum: ["free", "pro"],
-      default: "free",
-    },
-    role: {
-      type: String,
-      enum: ["user", "admin"],
-      default: "user",
-    },
-    limits: {
-      maxProjects: {
-        type: Number,
-        default: 3,
-      },
-      dailyAiCalls: {
-        type: Number,
-        default: 20,
-      },
-      dailyUploads: {
-        type: Number,
-        default: 5,
-      },
-      dailyCompiles: {
-        type: Number,
-        default: 50,
-      },
-    },
   },
   {
     timestamps: true,

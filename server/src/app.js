@@ -7,7 +7,10 @@ import { errorMiddleware } from "./middleware/error.js";
 import { notFoundMiddleware } from "./middleware/not-found.js";
 import { publicApiLimiter } from "./middleware/rate-limit.js";
 import { requestIdMiddleware } from "./middleware/request-id.js";
+import { authenticateJwt } from "./middleware/auth.js";
+import { syncUser } from "./middleware/sync-user.js";
 import healthRoutes from "./modules/health/health.routes.js";
+import userRoutes from "./modules/users/user.routes.js";
 import { logger } from "./utils/logger.js";
 
 morgan.token("request-id", (req) => req.id);
@@ -36,6 +39,7 @@ export function createApp() {
 
   app.use("/api/v1", publicApiLimiter);
   app.use("/api/v1", healthRoutes);
+  app.use("/api/v1", authenticateJwt, userRoutes);
 
   app.use(notFoundMiddleware);
   app.use(errorMiddleware);

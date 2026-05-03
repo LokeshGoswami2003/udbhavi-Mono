@@ -1,16 +1,38 @@
-# React + Vite
+# Udbhavi Client
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite client for the Udbhavi resume builder MVP.
 
-Currently, two official plugins are available:
+## Local Setup
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```bash
+npm install
+npm run dev
+```
 
-## React Compiler
+Use `http://localhost:5173` for the local client.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Auth0 Flow
 
-## Expanding the ESLint configuration
+The client owns the browser login experience:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- `/` renders the landing page.
+- `/login` redirects to Auth0 Universal Login.
+- `/signup` redirects to Auth0 Universal Login with signup intent.
+- `/app` is protected and shows the workspace after login.
+
+Frontend environment:
+
+```env
+VITE_API_URL=http://localhost:4000/api/v1
+VITE_AUTH0_DOMAIN=udbhaviauth.us.auth0.com
+VITE_AUTH0_CLIENT_ID=...
+VITE_AUTH0_AUDIENCE=https://api.udbhavi.local
+```
+
+The client requests an access token for `VITE_AUTH0_AUDIENCE`. The server should later validate the same audience and issuer before syncing the Auth0 user into MongoDB.
+
+Auth0 application settings for local development:
+
+- Allowed Callback URLs: `http://localhost:5173/app`
+- Allowed Logout URLs: `http://localhost:5173`
+- Allowed Web Origins: `http://localhost:5173`
