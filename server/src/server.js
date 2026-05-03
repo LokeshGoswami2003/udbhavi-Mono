@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { createApp } from "./app.js";
 import { connectDatabase, disconnectDatabase } from "./config/db.js";
 import { env } from "./config/env.js";
+import { logger } from "./utils/logger.js";
 
 async function startServer() {
   await connectDatabase();
@@ -10,11 +11,14 @@ async function startServer() {
   const server = createServer(app);
 
   server.listen(env.port, () => {
-    console.log(`API server listening on http://localhost:${env.port}`);
+    logger.info("API server listening", {
+      url: `http://localhost:${env.port}`,
+      nodeEnv: env.nodeEnv,
+    });
   });
 
   const shutdown = async () => {
-    console.log("Shutting down API server...");
+    logger.info("Shutting down API server");
     server.close(async () => {
       await disconnectDatabase();
       process.exit(0);
@@ -26,6 +30,6 @@ async function startServer() {
 }
 
 startServer().catch((error) => {
-  console.error("Failed to start API server", error);
+  logger.error("Failed to start API server", { error });
   process.exit(1);
 });
