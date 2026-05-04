@@ -102,17 +102,56 @@ Choose template
   -> UI shows live resume preview and interactive feedback chat
 ```
 
-The implementation uses a provider interface:
+The implementation uses a Bedrock provider interface:
 
 ```txt
-LLM_PROVIDER=mock
-  -> local mock draft and feedback
-
 LLM_PROVIDER=bedrock
   -> AWS Bedrock JSON call using backend env vars
+  -> Amazon Nova models use the Converse API
 ```
 
 The prompt pipeline is already shaped for Bedrock. The app should only run real Bedrock calls after the backend environment is intentionally configured and the user is comfortable sending resume context to AWS.
+
+Current Bedrock status:
+
+```txt
+LLM_PROVIDER=bedrock is wired.
+AWS bearer-token env is supported.
+Nova Pro is configured with `BEDROCK_MODEL_ID=us.amazon.nova-pro-v1:0`.
+Nova models use the Bedrock Converse API.
+Run npm run smoke:bedrock from server/ to verify readiness.
+The app-path smoke works with Nova Pro after the model switch.
+Treat the app's Bedrock API key as the source of truth; the local AWS CLI may be configured for a different account.
+Mock AI responses are removed from the runtime path; provider failures now return clear API errors.
+Uploaded PDF/DOCX files are sent directly to Nova during generation when available, with parser output used only as backup context.
+```
+
+## Preview Rendering Direction
+
+The preview should feel closer to Overleaf than a markdown editor:
+
+```txt
+Project selected
+  -> center panel shows a document page
+  -> right panel shows AI feedback/chat
+  -> backend stores ResumeData, rendered HTML, and LaTeX source
+```
+
+Current implementation:
+
+- Two templates only: `classic-ats` and `modern-compact`.
+- Template selection cards render live document-style previews instead of skeleton placeholders.
+- The selected template's LaTeX sample is sent in the prompt as the formatting contract.
+- Server generates escaped LaTeX source.
+- Server generates an Overleaf-like HTML page preview from the same resume data.
+- Existing old projects can rebuild their preview through the current renderer.
+- The workspace shell is viewport-bound; sidebar, preview, and chat scroll independently.
+- Chat shows pending user input and AI activity while the Bedrock request is running.
+
+Pending for true compiled preview:
+
+- Install/configure `tectonic`, `latexmk`, or `pdflatex` on the local/server runtime.
+- Add preview/download endpoints that compile the stored LaTeX source.
 
 ## Workspace UX Model
 

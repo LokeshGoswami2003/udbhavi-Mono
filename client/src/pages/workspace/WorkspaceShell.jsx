@@ -3,9 +3,9 @@ import { Button } from '../../components/ui/Button'
 
 export function WorkspaceShell({ account, projects = [], activeProjectId, onProjectSelect, onNewProject, onDeleteProject, onShowResumes, onLogout, children }) {
   return (
-    <div className="min-h-screen bg-white text-slate-950 dark:bg-slate-950 dark:text-white">
-      <div className="flex min-h-screen flex-col md:flex-row">
-        <aside className="border-b border-slate-200 bg-slate-50 px-3 py-3 dark:border-white/10 dark:bg-slate-900 md:flex md:w-72 md:flex-col md:border-b-0 md:border-r">
+    <div className="h-dvh overflow-hidden bg-white text-slate-950 dark:bg-slate-950 dark:text-white">
+      <div className="flex h-full min-h-0 flex-col md:flex-row">
+        <aside className="flex max-h-[42dvh] shrink-0 flex-col overflow-hidden border-b border-slate-200 bg-slate-50 px-3 py-3 dark:border-white/10 dark:bg-slate-900 md:max-h-none md:w-72 md:border-b-0 md:border-r">
           <div className="flex items-center justify-between md:block">
             <a href="/" className="flex items-center gap-2 text-lg font-black">
               <span className="grid size-8 place-items-center rounded-lg bg-blue-600 text-white">
@@ -75,7 +75,7 @@ export function WorkspaceShell({ account, projects = [], activeProjectId, onProj
           </div>
         </aside>
 
-        <main className="min-w-0 flex-1">{children}</main>
+        <main className="min-h-0 min-w-0 flex-1 overflow-hidden">{children}</main>
       </div>
     </div>
   )

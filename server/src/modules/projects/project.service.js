@@ -1,6 +1,8 @@
 import { logger } from "../../utils/logger.js";
 import { generateInitialResume, continueResumeChat } from "../ai/resume-generation.service.js";
+import { renderResumeHtml, renderResumeLatex } from "../render/resume-render.service.js";
 import { getResumeForUser } from "../resumes/resume.service.js";
+import { readResumeFile } from "../resumes/resume-storage.service.js";
 import { getTemplate } from "../templates/template.service.js";
 import { Project } from "./project.model.js";
 
@@ -22,6 +24,43 @@ function notFound() {
   error.statusCode = 404;
   error.code = "PROJECT_NOT_FOUND";
   return error;
+}
+
+function getDocumentFormat(mimeType = "") {
+  if (mimeType === "application/pdf") {
+    return "pdf";
+  }
+
+  if (
+    mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    mimeType === "application/msword"
+  ) {
+    return mimeType === "application/msword" ? "doc" : "docx";
+  }
+
+  return null;
+}
+
+async function withSourceDocument(resume) {
+  const format = getDocumentFormat(resume.file?.mimeType);
+
+  if (!resume.file?.fileId || !format) {
+    return resume;
+  }
+
+  const bytes = await readResumeFile(resume.file.fileId);
+
+  if (!bytes?.length) {
+    return resume;
+  }
+
+  return {
+    ...resume.toObject(),
+    sourceDocument: {
+      format,
+      bytes,
+    },
+  };
 }
 
 export async function listProjects(userId) {
@@ -73,40 +112,77 @@ export async function getProjectForUser({ userId, projectId }) {
 
 export async function selectTemplateAndGenerate({ userId, projectId, templateId }) {
   const project = await getProjectForUser({ userId, projectId });
-  const resume = await getResumeForUser({ userId, resumeId: project.resumeId });
+  const resume = await withSourceDocument(await getResumeForUser({ userId, resumeId: project.resumeId }));
   const template = getTemplate(templateId);
-  const generated = await generateInitialResume({ project: { ...project.toObject(), templateId: template.id }, resume, template });
 
   project.templateId = template.id;
-  project.status = "ready";
-  project.ai = {
-    provider: generated.provider,
-    promptVersion: generated.promptVersion,
-    resumeDraft: generated.resumeDraft,
-    feedback: generated.feedback,
+  project.status = "processing";
+  await project.save();
+
+  try {
+    const generated = await generateInitialResume({ project: { ...project.toObject(), templateId: template.id }, resume, template });
+    const renderedHtml = renderResumeHtml({ resumeData: generated.resumeData, templateId: template.id });
+    const latexSource = renderResumeLatex({ resumeData: generated.resumeData, templateId: template.id });
+
+    project.status = "ready";
+    project.ai = {
+      provider: generated.provider,
+      providerError: generated.providerError,
+      promptVersion: generated.promptVersion,
+      resumeData: generated.resumeData,
+      renderedHtml,
+      latexSource,
+      feedback: generated.feedback,
     nextAction: generated.nextAction,
     messages: [
       {
         role: "assistant",
-        content: generated.nextAction,
+        content: generated.assistantMessage || generated.nextAction,
       },
     ],
-  };
+    };
 
-  await project.save();
-  return toProjectResponse(project);
+    await project.save();
+    return toProjectResponse(project);
+  } catch (error) {
+    project.status = "failed";
+    project.ai = {
+      ...(project.ai || {}),
+      provider: "bedrock",
+      providerError: error.providerError || {
+        code: error.code || "LLM_GENERATION_FAILED",
+        message: error.message,
+      },
+      messages: [
+        ...(project.ai?.messages || []),
+        {
+          role: "assistant",
+          content: "I could not generate this draft because the AI provider is unavailable. Please retry after the provider is ready.",
+        },
+      ],
+    };
+    await project.save();
+    throw error;
+  }
 }
 
 export async function addProjectMessage({ userId, projectId, message }) {
   const project = await getProjectForUser({ userId, projectId });
-  const generated = await continueResumeChat({ project, message });
+  const template = getTemplate(project.templateId);
+  const generated = await continueResumeChat({ project, message, template });
+  const renderedHtml = renderResumeHtml({ resumeData: generated.resumeData, templateId: project.templateId });
+  const latexSource = renderResumeLatex({ resumeData: generated.resumeData, templateId: project.templateId });
 
   project.ai = {
     ...(project.ai || {}),
     provider: generated.provider,
+    providerError: generated.providerError,
     promptVersion: generated.promptVersion,
-    resumeDraft: generated.resumeDraft || project.ai?.resumeDraft,
+    resumeData: generated.resumeData || project.ai?.resumeData,
+    renderedHtml,
+    latexSource,
     feedback: generated.feedback,
+    nextAction: generated.nextAction,
     messages: [
       ...(project.ai?.messages || []),
       { role: "user", content: message },

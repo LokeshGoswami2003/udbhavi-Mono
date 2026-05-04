@@ -32,6 +32,7 @@ export function WorkspacePage() {
   const [showProjectDialog, setShowProjectDialog] = useState(false)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
+  const [pendingChatMessage, setPendingChatMessage] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
 
   const loadContext = useCallback(() => {
@@ -156,10 +157,11 @@ export function WorkspacePage() {
   }
 
   function handleProjectMessage(projectId, message) {
+    setPendingChatMessage(message)
     runAction(async () => {
       await sendProjectMessage(getApiToken, projectId, message)
       loadContext()
-    })
+    }).finally(() => setPendingChatMessage(''))
   }
 
   function handlePrimaryResume(resumeId) {
@@ -237,6 +239,7 @@ export function WorkspacePage() {
         <ProjectWorkspace
           project={activeProject}
           busy={busy}
+          pendingMessage={pendingChatMessage}
           onSelectTemplate={handleTemplateSelect}
           onSendMessage={handleProjectMessage}
         />

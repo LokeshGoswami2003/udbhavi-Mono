@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
+    "smoke:bedrock": "node src/modules/ai/bedrock.smoke.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {

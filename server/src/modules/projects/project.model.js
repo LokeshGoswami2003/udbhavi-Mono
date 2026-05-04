@@ -14,8 +14,14 @@ const projectSchema = new mongoose.Schema(
     templateId: String,
     ai: {
       provider: String,
+      providerError: {
+        code: String,
+        message: String,
+      },
       promptVersion: String,
-      resumeDraft: String,
+      resumeData: mongoose.Schema.Types.Mixed,
+      renderedHtml: String,
+      latexSource: String,
       feedback: [String],
       nextAction: String,
       messages: [
