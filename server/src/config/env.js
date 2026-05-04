@@ -17,4 +17,9 @@ export const env = {
   auth0IssuerBaseUrl: process.env.AUTH0_ISSUER_BASE_URL?.replace(/\/$/, ""),
   auth0Audience: process.env.AUTH0_AUDIENCE,
   auth0ClaimsNamespace: (process.env.AUTH0_CLAIMS_NAMESPACE ?? "https://api.udbhavi.local").replace(/\/$/, ""),
+  awsRegion: process.env.AWS_REGION ?? "us-east-1",
+  awsAccessKeyId: process.env.AWS_ACCESS_KEY_ID,
+  awsSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  bedrockModelId: process.env.BEDROCK_MODEL_ID ?? "anthropic.claude-3-5-sonnet-20241022-v2:0",
+  llmProvider: process.env.LLM_PROVIDER ?? "mock",
 };

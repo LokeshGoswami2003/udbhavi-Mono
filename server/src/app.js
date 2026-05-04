@@ -10,6 +10,9 @@ import { requestIdMiddleware } from "./middleware/request-id.js";
 import { authenticateJwt } from "./middleware/auth.js";
 import { syncUser } from "./middleware/sync-user.js";
 import healthRoutes from "./modules/health/health.routes.js";
+import contextRoutes from "./modules/context/context.routes.js";
+import projectRoutes from "./modules/projects/project.routes.js";
+import resumeRoutes from "./modules/resumes/resume.routes.js";
 import userRoutes from "./modules/users/user.routes.js";
 import { logger } from "./utils/logger.js";
 
@@ -40,6 +43,9 @@ export function createApp() {
   app.use("/api/v1", publicApiLimiter);
   app.use("/api/v1", healthRoutes);
   app.use("/api/v1", authenticateJwt, userRoutes);
+  app.use("/api/v1", authenticateJwt, syncUser, contextRoutes);
+  app.use("/api/v1", authenticateJwt, syncUser, resumeRoutes);
+  app.use("/api/v1", authenticateJwt, syncUser, projectRoutes);
 
   app.use(notFoundMiddleware);
   app.use(errorMiddleware);
