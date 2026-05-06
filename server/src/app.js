@@ -21,6 +21,10 @@ morgan.token("request-id", (req) => req.id);
 export function createApp() {
   const app = express();
 
+  // Behind nginx on the same host — trust loopback so X-Forwarded-* headers
+  // (real client IP, scheme) are honored by rate limiting and req.ip.
+  app.set("trust proxy", "loopback");
+
   app.use(requestIdMiddleware);
   app.use(helmet());
   app.use(
