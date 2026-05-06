@@ -49,11 +49,6 @@ function pathText(link = {}) {
   }
 }
 
-function hasAnyNeedle(haystack, needles) {
-  const value = text(haystack);
-  return needles.some((needle) => value.includes(text(needle)));
-}
-
 function profileGithub(link) {
   if (!host(link).includes("github.com")) {
     return false;
@@ -84,11 +79,7 @@ function setEmailIfEmpty(target, link) {
   }
 }
 
-function sourceKey(sourceLinks = [], userProvidedLinks = []) {
-  return new Set([...sourceLinks, ...userProvidedLinks].map((link) => normalizeUrl(link.normalizedUrl || link.url || link)).filter(Boolean));
-}
-
-function clearUnsupportedBasicsLinks(basics, trustedUrls) {
+function clearUnsupportedBasicsLinks(basics) {
   for (const key of ["website", "portfolio", "linkedin", "github"]) {
     const normalized = normalizeUrl(basics[key]);
 
@@ -110,8 +101,51 @@ function clearUnsupportedBasicsLinks(basics, trustedUrls) {
   }
 }
 
-function projectScore(project, link, usedUrls) {
-  if (!link?.normalizedUrl || usedUrls.has(link.normalizedUrl)) {
+function projectLinkType(url, link = {}) {
+  const hostname = host(link) || hostOfUrl(url);
+  const haystack = `${link.label || ""} ${link.context || ""} ${url}`.toLowerCase();
+  if (/youtube\.com|youtu\.be/.test(hostname) || /youtube|video|demo video/.test(haystack)) {
+    return "video";
+  }
+  if (hostname.includes("github.com")) {
+    return "repo";
+  }
+  if (/snapshot|screenshot|gallery|images?\b/.test(haystack)) {
+    return "snapshot";
+  }
+  if (/certificate|credential|verify/.test(haystack)) {
+    return "certificate";
+  }
+  if (/portfolio/.test(haystack)) {
+    return "portfolio";
+  }
+  if (/live|demo|deploy|vercel\.app|netlify\.app|render\.com|firebaseapp\.com/.test(haystack)) {
+    return "live";
+  }
+  return "other";
+}
+
+function defaultLabelFor(type, hostname = "") {
+  switch (type) {
+    case "repo":
+      return hostname.includes("github.com") ? "GitHub" : "Repo";
+    case "video":
+      return "YouTube";
+    case "live":
+      return "Live";
+    case "snapshot":
+      return "Snapshots";
+    case "certificate":
+      return "Certificate";
+    case "portfolio":
+      return "Portfolio";
+    default:
+      return hostname || "Link";
+  }
+}
+
+function projectScore(project, link) {
+  if (!link?.normalizedUrl) {
     return 0;
   }
 
@@ -129,19 +163,15 @@ function projectScore(project, link, usedUrls) {
     score += 0.35;
   }
 
-  if (hasAnyNeedle(link.label, ["live", "demo", "app", "link"])) {
+  if (/\b(live|demo|app|youtube|github|snapshot|deployed|repo|repository)\b/i.test(`${link.label || ""} ${link.context || ""}`)) {
     score += 0.3;
   }
 
-  if (host(link).includes("github.com")) {
-    score += 0.12;
-  }
-
-  return matchedWords.length || hasAnyNeedle(link.context, [project.name]) ? score : 0;
+  return matchedWords.length || text(link.context).includes(text(project.name)) ? score : 0;
 }
 
-function certificationScore(certification, link, usedUrls) {
-  if (!link?.normalizedUrl || usedUrls.has(link.normalizedUrl)) {
+function certificationScore(certification, link) {
+  if (!link?.normalizedUrl) {
     return 0;
   }
 
@@ -154,12 +184,49 @@ function certificationScore(certification, link, usedUrls) {
     score += 0.5;
   }
 
-  if (hasAnyNeedle(evidence, ["certificate", "credential", "verify"])) {
+  if (/certificate|credential|verify/i.test(evidence)) {
     score += 0.25;
   }
 
   score += matchedWords.length * 0.2;
   return link.type === "certificate" || matchedWords.length ? score : 0;
+}
+
+function buildProjectLink(link) {
+  const url = link.normalizedUrl;
+  if (!url) return null;
+  const hostname = host(link);
+  const type = projectLinkType(url, link);
+  const explicitLabel = link.label && /^(github|youtube|live|demo|snapshots?|repo|repository|portfolio|certificate|link)$/i.test(link.label)
+    ? capitalizeLabel(link.label)
+    : "";
+  const label = explicitLabel || defaultLabelFor(type, hostname);
+  return { label, url, type };
+}
+
+function capitalizeLabel(label = "") {
+  const lc = label.toLowerCase();
+  if (lc === "github") return "GitHub";
+  if (lc === "youtube") return "YouTube";
+  if (lc === "snapshot" || lc === "snapshots") return "Snapshots";
+  if (lc === "live" || lc === "demo") return "Live";
+  if (lc === "repo" || lc === "repository") return "Repo";
+  if (lc === "certificate") return "Certificate";
+  if (lc === "portfolio") return "Portfolio";
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function dedupeLinks(links = []) {
+  const out = [];
+  const seen = new Set();
+  for (const link of links) {
+    if (!link?.url) continue;
+    const key = link.url.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(link);
+  }
+  return out;
 }
 
 export function reconcileResumeLinks({ resumeData, sourceLinks = [], userProvidedLinks = [] }) {
@@ -170,10 +237,9 @@ export function reconcileResumeLinks({ resumeData, sourceLinks = [], userProvide
       normalizedUrl: normalizeUrl(link.normalizedUrl || link.url),
     }))
     .filter((link) => link.normalizedUrl);
-  const trustedUrls = sourceKey(trustedLinks, userProvidedLinks);
   const usedUrls = new Set();
 
-  clearUnsupportedBasicsLinks(next.basics, trustedUrls);
+  clearUnsupportedBasicsLinks(next.basics);
 
   setIfEmpty(next.basics, "linkedin", bestLink(trustedLinks, (link) => link.type === "linkedin"));
   setIfEmpty(next.basics, "github", bestLink(trustedLinks, (link) => link.type === "github" || profileGithub(link)));
@@ -186,23 +252,40 @@ export function reconcileResumeLinks({ resumeData, sourceLinks = [], userProvide
   }
 
   next.projects = next.projects.map((project) => {
-    if (project.url) {
-      usedUrls.add(project.url);
-      return project;
+    const existing = (project.links || []).map((link) => ({ ...link, url: normalizeUrl(link.url) || link.url })).filter((link) => link.url);
+    for (const link of existing) {
+      usedUrls.add(link.url);
     }
 
     const candidates = trustedLinks
-      .map((link) => ({ link, score: projectScore(project, link, usedUrls) }))
+      .map((link) => ({ link, score: projectScore(project, link) }))
       .filter((candidate) => candidate.score >= 0.9)
       .sort((a, b) => b.score - a.score);
-    const selected = candidates[0]?.link;
 
-    if (!selected) {
-      return project;
+    const merged = [...existing];
+    const mergedTypes = new Set(merged.map((link) => link.type));
+
+    for (const candidate of candidates) {
+      const trustedUrl = candidate.link.normalizedUrl;
+      if (usedUrls.has(trustedUrl)) {
+        continue;
+      }
+      const built = buildProjectLink(candidate.link);
+      if (!built) continue;
+      if (merged.some((existingLink) => existingLink.url === built.url)) continue;
+      // avoid two of same type unless explicitly different (allow multiple "other")
+      if (built.type !== "other" && mergedTypes.has(built.type)) continue;
+      merged.push(built);
+      mergedTypes.add(built.type);
+      usedUrls.add(trustedUrl);
     }
 
-    usedUrls.add(selected.normalizedUrl);
-    return { ...project, url: selected.normalizedUrl };
+    const deduped = dedupeLinks(merged);
+    return {
+      ...project,
+      links: deduped,
+      url: project.url || deduped[0]?.url || "",
+    };
   });
 
   next.certifications = next.certifications.map((certification) => {
@@ -212,8 +295,8 @@ export function reconcileResumeLinks({ resumeData, sourceLinks = [], userProvide
     }
 
     const candidates = trustedLinks
-      .map((link) => ({ link, score: certificationScore(certification, link, usedUrls) }))
-      .filter((candidate) => candidate.score >= 1)
+      .map((link) => ({ link, score: certificationScore(certification, link) }))
+      .filter((candidate) => candidate.score >= 1 && !usedUrls.has(candidate.link.normalizedUrl))
       .sort((a, b) => b.score - a.score);
     const selected = candidates[0]?.link;
 

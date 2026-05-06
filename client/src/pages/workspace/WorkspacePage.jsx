@@ -7,7 +7,7 @@ import {
   deleteProject,
   deleteResume,
   downloadProjectPdf,
-  fetchProjectPreviewPdfBlob,
+  fetchProjectPreviewPdf,
   fetchWorkspaceContext,
   makeResumePrimary,
   selectProjectTemplate,
@@ -19,6 +19,7 @@ import { DashboardView } from './DashboardView'
 import { OnboardingFlow } from './OnboardingFlow'
 import { ProjectDialog } from './ProjectDialog'
 import { ProjectWorkspace } from './ProjectWorkspace'
+import { ResumeContextEditor } from './components/ResumeContextEditor'
 import { WorkspaceShell } from './WorkspaceShell'
 import { LoginRequired, WorkspaceError, WorkspaceLoading } from './WorkspaceStatus'
 
@@ -38,6 +39,7 @@ export function WorkspacePage() {
   const [state, setState] = useState({ status: 'loading', data: null, error: '' })
   const [activeProjectId, setActiveProjectId] = useState('')
   const [showResumes, setShowResumes] = useState(false)
+  const [editingResumeId, setEditingResumeId] = useState('')
   const [draftResume, setDraftResume] = useState(null)
   const [showProjectDialog, setShowProjectDialog] = useState(false)
   const [busy, setBusy] = useState(initialBusyState)
@@ -245,7 +247,7 @@ export function WorkspacePage() {
       setBusy((current) => ({ ...current, loadingPreview: true }))
 
       try {
-        return await fetchProjectPreviewPdfBlob(getApiToken, projectId)
+        return await fetchProjectPreviewPdf(getApiToken, projectId)
       } finally {
         setBusy((current) => ({ ...current, loadingPreview: false }))
       }
@@ -268,6 +270,17 @@ export function WorkspacePage() {
     runAction('savingResume', async () => {
       await deleteResume(getApiToken, resumeId)
       setDraftResume(null)
+      if (editingResumeId === resumeId) {
+        setEditingResumeId('')
+      }
+      loadContext()
+    })
+  }
+
+  function handleSaveResumeData(resumeId, resumeData) {
+    runAction('savingResume', async () => {
+      await updateResume(getApiToken, resumeId, resumeData)
+      setEditingResumeId('')
       loadContext()
     })
   }
@@ -295,7 +308,10 @@ export function WorkspacePage() {
       }}
       onNewProject={() => setShowProjectDialog(true)}
       onDeleteProject={handleDeleteProject}
-      onShowResumes={() => setShowResumes(true)}
+      onShowResumes={() => {
+        setShowResumes(true)
+        setEditingResumeId('')
+      }}
       onLogout={logoutToHome}
     >
       {actionError ? (
@@ -314,6 +330,16 @@ export function WorkspacePage() {
           onResumeChange={(resumeData) => setDraftResume((resume) => ({ ...resume, resumeData }))}
           onSave={handleSaveResume}
         />
+      ) : showResumes && editingResumeId ? (
+        <ResumeContextEditor
+          resume={resumes.find((resume) => resume.id === editingResumeId)}
+          busy={busy.savingResume}
+          getApiToken={getApiToken}
+          onClose={() => setEditingResumeId('')}
+          onSave={handleSaveResumeData}
+          onMakePrimary={handlePrimaryResume}
+          onDelete={handleDeleteResume}
+        />
       ) : showResumes ? (
         <DashboardView
           view="resumes"
@@ -323,6 +349,7 @@ export function WorkspacePage() {
           onDeleteProject={handleDeleteProject}
           onPrimaryResume={handlePrimaryResume}
           onDeleteResume={handleDeleteResume}
+          onEditResume={(resumeId) => setEditingResumeId(resumeId)}
         />
       ) : (
         <ProjectWorkspace

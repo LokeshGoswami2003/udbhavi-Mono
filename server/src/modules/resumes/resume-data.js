@@ -13,6 +13,7 @@ export function emptyResumeData() {
       github: "",
       portfolio: "",
       summary: "",
+      links: [],
     },
     skills: [],
     experience: [],
@@ -23,6 +24,16 @@ export function emptyResumeData() {
     customSections: [],
   };
 }
+
+const PROJECT_LINK_TYPES = new Set([
+  "repo",
+  "video",
+  "live",
+  "snapshot",
+  "certificate",
+  "portfolio",
+  "other",
+]);
 
 function toString(value) {
   return value == null ? "" : String(value).trim();
@@ -35,6 +46,95 @@ function toUrlString(value) {
 
 function stringArray(value) {
   return Array.isArray(value) ? value.map(toString).filter(Boolean) : [];
+}
+
+function classifyProjectLinkType(url, label = "") {
+  const haystack = `${label} ${url}`.toLowerCase();
+  let host = "";
+  try {
+    host = new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    host = "";
+  }
+  if (/youtube\.com|youtu\.be/.test(host) || /youtube|video|demo video/.test(haystack)) return "video";
+  if (host.includes("github.com")) return "repo";
+  if (/snapshot|screenshot|images|gallery/.test(haystack)) return "snapshot";
+  if (/certificate|credential|verify/.test(haystack)) return "certificate";
+  if (/portfolio/.test(haystack)) return "portfolio";
+  if (/live|demo|deploy|vercel\.app|netlify\.app|render\.com|firebaseapp\.com/.test(haystack)) return "live";
+  if (/^https?:/i.test(url)) return "live";
+  return "other";
+}
+
+function defaultLabelForType(type, host = "") {
+  switch (type) {
+    case "repo":
+      return host.includes("github.com") ? "GitHub" : "Repo";
+    case "video":
+      return "YouTube";
+    case "live":
+      return "Live";
+    case "snapshot":
+      return "Snapshots";
+    case "certificate":
+      return "Certificate";
+    case "portfolio":
+      return "Portfolio";
+    default:
+      return host || "Link";
+  }
+}
+
+function normalizeProjectLink(link = {}) {
+  const url = toUrlString(link.url);
+  if (!url) {
+    return null;
+  }
+
+  const explicitType = typeof link.type === "string" && PROJECT_LINK_TYPES.has(link.type) ? link.type : null;
+  let host = "";
+  try {
+    host = new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    host = "";
+  }
+  const inferredType = explicitType || classifyProjectLinkType(url, link.label);
+  const label = toString(link.label) || defaultLabelForType(inferredType, host);
+
+  return { label, url, type: inferredType };
+}
+
+function dedupeLinkList(links = []) {
+  const seen = new Set();
+  const out = [];
+  for (const link of links) {
+    if (!link?.url) continue;
+    const key = link.url.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(link);
+  }
+  return out;
+}
+
+function normalizeBasicsLinks(input) {
+  if (!Array.isArray(input)) return [];
+  return dedupeLinkList(input.map(normalizeProjectLink).filter(Boolean));
+}
+
+function normalizeProjectLinksArray(input, fallbackUrl = "") {
+  const normalized = Array.isArray(input)
+    ? dedupeLinkList(input.map(normalizeProjectLink).filter(Boolean))
+    : [];
+
+  if (fallbackUrl && !normalized.length) {
+    const link = normalizeProjectLink({ url: fallbackUrl });
+    if (link) {
+      normalized.push(link);
+    }
+  }
+
+  return normalized;
 }
 
 export function normalizeResumeData(input = {}) {
@@ -54,6 +154,7 @@ export function normalizeResumeData(input = {}) {
     github: toUrlString(basics.github),
     portfolio: toUrlString(basics.portfolio),
     summary: toString(basics.summary),
+    links: normalizeBasicsLinks(basics.links),
   };
 
   data.skills = Array.isArray(input.skills)
@@ -90,13 +191,18 @@ export function normalizeResumeData(input = {}) {
     : [];
 
   data.projects = Array.isArray(input.projects)
-    ? input.projects.map((item = {}) => ({
-        name: toString(item.name),
-        description: toString(item.description),
-        url: toUrlString(item.url),
-        bullets: stringArray(item.bullets),
-        technologies: stringArray(item.technologies),
-      })).filter((item) => item.name || item.description || item.bullets.length)
+    ? input.projects.map((item = {}) => {
+        const url = toUrlString(item.url);
+        const links = normalizeProjectLinksArray(item.links, url);
+        return {
+          name: toString(item.name),
+          description: toString(item.description),
+          url: url || links[0]?.url || "",
+          links,
+          bullets: stringArray(item.bullets),
+          technologies: stringArray(item.technologies),
+        };
+      }).filter((item) => item.name || item.description || item.bullets.length)
     : [];
 
   data.certifications = Array.isArray(input.certifications)

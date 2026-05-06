@@ -4,7 +4,11 @@ import { extractVisibleLinksFromText } from "../../utils/links.js";
 import { generateInitialResumeData, continueResumeChat } from "../ai/resume-generation.service.js";
 import { compileLatexToPdf } from "../render/latex-compile.service.js";
 import { readRenderedPdf, saveRenderedPdf } from "../render/render-storage.service.js";
-import { renderResumeLatex } from "../render/resume-render.service.js";
+import {
+  renderResumeLatex,
+  renderResumeLatexAtCompactionLevel,
+  RENDER_COMPACTION_LEVELS,
+} from "../render/resume-render.service.js";
 import { normalizeResumeData } from "../resumes/resume-data.js";
 import { reconcileResumeLinks } from "../resumes/resume-link-reconcile.service.js";
 import { applyResumePatchOps } from "../resumes/resume-patch.service.js";
@@ -19,8 +23,31 @@ import {
 } from "../versions/version.service.js";
 import { Project } from "./project.model.js";
 
+function toPlainAi(ai) {
+  if (!ai) {
+    return {};
+  }
+  return ai.toObject ? ai.toObject() : ai;
+}
+
+function withSafePdf(ai, pdf) {
+  const next = { ...toPlainAi(ai) };
+  if (pdf?.fileId && pdf?.latexHash) {
+    next.pdf = pdf;
+  } else {
+    delete next.pdf;
+  }
+  return next;
+}
+
+function clearPdfCache(ai) {
+  const next = { ...toPlainAi(ai) };
+  delete next.pdf;
+  return next;
+}
+
 function toProjectResponse(project) {
-  const ai = project.ai?.toObject ? project.ai.toObject() : project.ai;
+  const ai = toPlainAi(project.ai);
 
   return {
     id: project.id,
@@ -134,6 +161,43 @@ function getLightConversationReply(message = "") {
   return "Hi! I’m here and ready to help with this resume. You can paste a job description for a role-match review, ask me to improve wording, or point me to a specific section.";
 }
 
+async function renderAndCompileProjectPdfForOnePage({ project, resumeData, requestId }) {
+  let lastResult = null;
+  for (let level = 0; level < RENDER_COMPACTION_LEVELS; level += 1) {
+    const latexSource = renderResumeLatexAtCompactionLevel({
+      resumeData,
+      templateId: project.templateId,
+      level,
+    });
+    project.ai = {
+      ...toPlainAi(project.ai),
+      latexSource,
+    };
+    project.ai = clearPdfCache(project.ai);
+    await project.save();
+    const result = await compileAndStoreProjectPdf({ project, requestId, force: true });
+    lastResult = result;
+    if ((result.pageCount || 1) <= 1) {
+      logger.info("project.pdf.one_page.success", {
+        requestId,
+        module: "render",
+        projectId: project.id,
+        compactionLevel: level,
+        pageCount: result.pageCount,
+      });
+      return result;
+    }
+    logger.info("project.pdf.one_page.retrying", {
+      requestId,
+      module: "render",
+      projectId: project.id,
+      compactionLevel: level,
+      pageCount: result.pageCount,
+    });
+  }
+  return lastResult;
+}
+
 async function compileAndStoreProjectPdf({ project, requestId, force = false }) {
   const latexSource = project.ai?.latexSource;
 
@@ -145,7 +209,8 @@ async function compileAndStoreProjectPdf({ project, requestId, force = false }) 
   }
 
   const latexHash = getLatexHash(latexSource);
-  const cachedPdf = project.ai?.pdf;
+  const aiState = toPlainAi(project.ai);
+  const cachedPdf = aiState.pdf;
   const filename = getProjectPdfFilename(project);
 
   if (!force && cachedPdf?.fileId && cachedPdf.latexHash === latexHash) {
@@ -165,8 +230,10 @@ async function compileAndStoreProjectPdf({ project, requestId, force = false }) 
           pdf,
           filename,
           compiler: cachedPdf.compiler || "cached",
-          pageCount: cachedPdf.pageCount,
+          pageCount: cachedPdf.pageCount || 1,
           cached: true,
+          latexHash,
+          fileId: cachedPdf.fileId,
         };
       }
     } catch (error) {
@@ -198,16 +265,13 @@ async function compileAndStoreProjectPdf({ project, requestId, force = false }) 
     },
   });
 
-  project.ai = {
-    ...(project.ai?.toObject ? project.ai.toObject() : project.ai || {}),
-    pdf: {
-      fileId,
-      latexHash,
-      compiledAt: new Date(),
-      compiler: compiled.compiler,
-      pageCount,
-    },
-  };
+  project.ai = withSafePdf(project.ai, {
+    fileId,
+    latexHash,
+    compiledAt: new Date(),
+    compiler: compiled.compiler,
+    pageCount,
+  });
   await project.save();
 
   logger.info("project.pdf.cached", {
@@ -226,6 +290,8 @@ async function compileAndStoreProjectPdf({ project, requestId, force = false }) 
     compiler: compiled.compiler,
     pageCount,
     cached: false,
+    latexHash,
+    fileId,
   };
 }
 
@@ -294,14 +360,13 @@ export async function selectTemplateAndGenerate({ userId, projectId, templateId,
     const latexSource = renderResumeLatex({ resumeData, templateId: template.id });
 
     project.status = "ready";
-    project.ai = {
+    project.ai = clearPdfCache({
       provider: generated.provider,
       providerError: generated.providerError,
       promptVersion: generated.promptVersion,
       resumeData,
       renderedHtml: undefined,
       latexSource,
-      pdf: undefined,
       feedback: generated.feedback,
       nextAction: generated.nextAction,
       messages: [
@@ -314,7 +379,7 @@ export async function selectTemplateAndGenerate({ userId, projectId, templateId,
           },
         },
       ],
-    };
+    });
 
     await project.save();
     const version = await createResumeVersion({
@@ -326,25 +391,26 @@ export async function selectTemplateAndGenerate({ userId, projectId, templateId,
     });
     project.activeVersionId = version._id;
     await project.save();
-    await compileAndStoreProjectPdf({ project, requestId, force: true });
+    await renderAndCompileProjectPdfForOnePage({ project, resumeData, requestId });
     return toProjectResponse(project);
   } catch (error) {
+    const aiState = toPlainAi(project.ai);
     project.status = "failed";
-    project.ai = {
-      ...(project.ai || {}),
+    project.ai = clearPdfCache({
+      ...aiState,
       provider: "bedrock",
       providerError: error.providerError || {
         code: error.code || "LLM_GENERATION_FAILED",
         message: error.message,
       },
       messages: [
-        ...(project.ai?.messages || []),
+        ...(aiState.messages || []),
         {
           role: "assistant",
           content: "I could not generate this draft because the AI provider is unavailable. Please retry after the provider is ready.",
         },
       ],
-    };
+    });
     await project.save();
     throw error;
   }
@@ -353,7 +419,7 @@ export async function selectTemplateAndGenerate({ userId, projectId, templateId,
 export async function addProjectMessage({ userId, projectId, message, requestId }) {
   const project = await getProjectForUser({ userId, projectId });
   if (isLightConversationMessage(message)) {
-    const aiState = project.ai?.toObject ? project.ai.toObject() : project.ai || {};
+    const aiState = toPlainAi(project.ai);
     const assistantMessage = getLightConversationReply(message);
 
     project.ai = {
@@ -392,7 +458,7 @@ export async function addProjectMessage({ userId, projectId, message, requestId 
   }
 
   const resume = await getLatestResumeContextForProject({ userId, project, requestId, event: "chat_edit" });
-  const aiState = project.ai?.toObject ? project.ai.toObject() : project.ai || {};
+  const aiState = toPlainAi(project.ai);
   const currentResumeData = normalizeResumeData(aiState.resumeData || {});
   const storedMessages = aiState.messages || [];
 
@@ -406,11 +472,44 @@ export async function addProjectMessage({ userId, projectId, message, requestId 
     hasFallbackRawText: Boolean(resume.extraction?.rawText),
   });
 
-  const generated = await continueResumeChat({
-    project: { ...project.toObject(), ai: { ...aiState, resumeData: currentResumeData, messages: storedMessages } },
-    resume,
-    message,
-  });
+  let generated;
+  try {
+    generated = await continueResumeChat({
+      project: { ...project.toObject(), ai: { ...aiState, resumeData: currentResumeData, messages: storedMessages } },
+      resume,
+      message,
+    });
+  } catch (chatError) {
+    logger.warn("project.chat.generation.failed", {
+      requestId,
+      module: "projects",
+      projectId: project.id,
+      code: chatError.code || "CHAT_GENERATION_FAILED",
+    });
+    project.ai = {
+      ...aiState,
+      messages: [
+        ...storedMessages,
+        { role: "user", content: message },
+        {
+          role: "assistant",
+          content:
+            "I could not reach the AI provider just now. Please try again in a moment, or rephrase the request and I will retry.",
+          metadata: {
+            intent: "error",
+            didModifyResume: false,
+            changeSummary: [],
+            suggestions: [],
+            questions: [],
+            quickReplies: ["Retry", "Improve wording", "Fix links"],
+            safetyNotes: ["AI provider error."],
+          },
+        },
+      ],
+    };
+    await project.save();
+    return toProjectResponse(project);
+  }
   let didApplyGeneratedPatch = generated.didModifyResume;
   let patchedResumeData = currentResumeData;
 
@@ -456,23 +555,25 @@ export async function addProjectMessage({ userId, projectId, message, requestId 
     evidenceChecked: generated.evidenceChecked,
   };
 
-  project.ai = {
-    ...(project.ai || {}),
+  const previousPdf = aiState.pdf;
+  const baseAi = {
+    ...aiState,
     provider: generated.provider,
     providerError: generated.providerError,
     promptVersion: generated.promptVersion,
     resumeData: nextResumeData,
     renderedHtml: undefined,
     latexSource,
-    pdf: didResumeChange ? undefined : project.ai?.pdf,
     feedback: generated.suggestions || [],
     nextAction: getChatNextAction({ project, generated }),
     messages: [
-      ...(project.ai?.messages || []),
+      ...storedMessages,
       { role: "user", content: message },
       { role: "assistant", content: generated.assistantMessage, metadata },
     ],
   };
+
+  project.ai = didResumeChange ? clearPdfCache(baseAi) : withSafePdf(baseAi, previousPdf);
 
   await project.save();
   if (didResumeChange) {
@@ -485,7 +586,16 @@ export async function addProjectMessage({ userId, projectId, message, requestId 
     });
     project.activeVersionId = version._id;
     await project.save();
-    await compileAndStoreProjectPdf({ project, requestId, force: true });
+    try {
+      await renderAndCompileProjectPdfForOnePage({ project, resumeData: nextResumeData, requestId });
+    } catch (compileError) {
+      logger.warn("project.chat.compile.failed", {
+        requestId,
+        module: "projects",
+        projectId: project.id,
+        code: compileError.code || "PDF_COMPILE_FAILED",
+      });
+    }
   }
 
   return toProjectResponse(project);
@@ -526,15 +636,15 @@ export async function restoreProjectVersion({ userId, projectId, versionId, requ
   const project = await getProjectForUser({ userId, projectId });
   const version = await getProjectVersion({ userId, projectId, versionId });
 
+  const aiState = toPlainAi(project.ai);
   project.status = "ready";
-  project.ai = {
-    ...(project.ai?.toObject ? project.ai.toObject() : project.ai || {}),
+  project.ai = clearPdfCache({
+    ...aiState,
     resumeData: version.resumeData,
     renderedHtml: undefined,
     latexSource: version.latexSource,
-    pdf: undefined,
     messages: [
-      ...(project.ai?.messages || []),
+      ...(aiState.messages || []),
       {
         role: "assistant",
         content: `Restored version ${version.versionNumber}.`,
@@ -544,7 +654,7 @@ export async function restoreProjectVersion({ userId, projectId, versionId, requ
         },
       },
     ],
-  };
+  });
   await project.save();
 
   const restoredVersion = await createResumeVersion({
@@ -556,7 +666,7 @@ export async function restoreProjectVersion({ userId, projectId, versionId, requ
   });
   project.activeVersionId = restoredVersion._id;
   await project.save();
-  await compileAndStoreProjectPdf({ project, requestId, force: true });
+  await renderAndCompileProjectPdfForOnePage({ project, resumeData: version.resumeData, requestId });
 
   return toProjectResponse(project);
 }

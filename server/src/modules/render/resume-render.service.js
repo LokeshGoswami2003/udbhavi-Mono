@@ -54,7 +54,7 @@ function list(items = []) {
   return filtered.length ? `<ul>${filtered.map((item) => `<li>${esc(item)}</li>`).join("")}</ul>` : "";
 }
 
-function renderSkills(skills = []) {
+function renderSkillsHtml(skills = []) {
   if (!skills.length) {
     return "";
   }
@@ -64,7 +64,7 @@ function renderSkills(skills = []) {
     .join("");
 }
 
-function renderExperience(experience = []) {
+function renderExperienceHtml(experience = []) {
   return experience
     .slice(0, 4)
     .map((item) => `
@@ -80,12 +80,18 @@ function renderExperience(experience = []) {
     .join("");
 }
 
-function renderProjects(projects = []) {
+function projectLinksHtml(item) {
+  const links = (item.links && item.links.length ? item.links : item.url ? [{ url: item.url, label: "Link" }] : []);
+  if (!links.length) return "";
+  return `<span>${links.map((l) => esc(l.label || "Link")).join(" | ")}</span>`;
+}
+
+function renderProjectsHtml(projects = []) {
   return projects
     .slice(0, 3)
     .map((item) => `
       <div class="entry">
-        <div class="item-title"><strong>${esc(item.name)}</strong>${item.url ? `<span>${esc(item.url)}</span>` : ""}</div>
+        <div class="item-title"><strong>${esc(item.name)}</strong>${projectLinksHtml(item)}</div>
         ${item.description ? `<div class="muted">${esc(item.description)}</div>` : ""}
         ${list(item.bullets || [])}
       </div>
@@ -93,7 +99,7 @@ function renderProjects(projects = []) {
     .join("");
 }
 
-function renderCertifications(data = {}) {
+function renderCertificationsHtml(data = {}) {
   const items = [...(data.certifications || []), ...(data.awards || [])];
 
   return items
@@ -107,7 +113,7 @@ function renderCertifications(data = {}) {
         <div class="entry compact">
           <div class="item-title">
             <strong>${esc(title)}</strong>
-            ${url ? `<span>${esc(url)}</span>` : ""}
+            ${url ? `<span>Certificate</span>` : ""}
           </div>
           ${issuer ? `<div class="muted">${esc(issuer)}</div>` : ""}
         </div>
@@ -116,7 +122,7 @@ function renderCertifications(data = {}) {
     .join("");
 }
 
-function renderEducation(education = []) {
+function renderEducationHtml(education = []) {
   return education
     .slice(0, 3)
     .map((item) => `
@@ -143,11 +149,11 @@ function renderBody(data, template) {
         <p class="contact">${contact.map(esc).join(" · ")}</p>
       </header>
       ${section("Summary", basics.summary ? `<p class="summary-line">${esc(basics.summary)}</p>` : "")}
-      ${section("Technical Skills", renderSkills(data.skills) ? `<ul>${renderSkills(data.skills)}</ul>` : "")}
-      ${includeExperience ? section("Experience", renderExperience(data.experience)) : ""}
-      ${section("Projects", renderProjects(data.projects))}
-      ${section("Education", renderEducation(data.education))}
-      ${section("Achievements & Certifications", renderCertifications(data))}
+      ${section("Technical Skills", renderSkillsHtml(data.skills) ? `<ul>${renderSkillsHtml(data.skills)}</ul>` : "")}
+      ${includeExperience ? section("Experience", renderExperienceHtml(data.experience)) : ""}
+      ${section("Projects", renderProjectsHtml(data.projects))}
+      ${section("Education", renderEducationHtml(data.education))}
+      ${section("Achievements & Certifications", renderCertificationsHtml(data))}
     </article>
   `;
 }
@@ -190,6 +196,247 @@ export function renderResumeHtml({ resumeData, templateId }) {
 </head>
 <body>${renderBody(resumeData || {}, template)}</body>
 </html>`;
+}
+
+const defaultRenderOptions = {
+  fontSize: 10,
+  topMarginAdjust: -0.75,
+  sideMarginAdjust: -0.5,
+  textWidthAdjust: 1.0,
+  textHeightAdjust: 1.5,
+  itemSpacing: "itemsep=1pt",
+  titleSpace: "4pt",
+  sectionSpacing: "8pt}{8pt",
+  bulletSpacing: "2pt",
+  experienceLimit: 5,
+  projectsLimit: 3,
+  bulletsPerExperience: 5,
+  bulletsPerProject: 5,
+};
+
+const compactRenderOptions = {
+  fontSize: 10,
+  topMarginAdjust: -0.85,
+  sideMarginAdjust: -0.6,
+  textWidthAdjust: 1.2,
+  textHeightAdjust: 1.7,
+  itemSpacing: "itemsep=0pt,topsep=1pt",
+  titleSpace: "2pt",
+  sectionSpacing: "5pt}{4pt",
+  bulletSpacing: "0pt",
+  experienceLimit: 4,
+  projectsLimit: 3,
+  bulletsPerExperience: 4,
+  bulletsPerProject: 3,
+};
+
+const COMPACTION_LEVELS = [
+  // level 0 = normal compact density
+  {
+    fontSize: 10,
+    topMarginAdjust: -0.85,
+    sideMarginAdjust: -0.6,
+    textWidthAdjust: 1.2,
+    textHeightAdjust: 1.7,
+    itemSpacing: "itemsep=0pt,topsep=1pt",
+    titleSpace: "2pt",
+    sectionSpacing: "5pt}{4pt",
+    bulletsPerExperience: 4,
+    bulletsPerProject: 3,
+  },
+  // level 1 = tighter spacing
+  {
+    fontSize: 10,
+    topMarginAdjust: -0.95,
+    sideMarginAdjust: -0.7,
+    textWidthAdjust: 1.4,
+    textHeightAdjust: 1.9,
+    itemSpacing: "itemsep=-1pt,topsep=0pt",
+    titleSpace: "1pt",
+    sectionSpacing: "3pt}{2pt",
+    bulletsPerExperience: 4,
+    bulletsPerProject: 3,
+  },
+  // level 2 = smaller font
+  {
+    fontSize: 9.5,
+    topMarginAdjust: -1.05,
+    sideMarginAdjust: -0.7,
+    textWidthAdjust: 1.4,
+    textHeightAdjust: 2.1,
+    itemSpacing: "itemsep=-2pt,topsep=0pt",
+    titleSpace: "0pt",
+    sectionSpacing: "2pt}{1pt",
+    bulletsPerExperience: 4,
+    bulletsPerProject: 3,
+  },
+  // level 3 = smallest
+  {
+    fontSize: 9,
+    topMarginAdjust: -1.1,
+    sideMarginAdjust: -0.75,
+    textWidthAdjust: 1.5,
+    textHeightAdjust: 2.2,
+    itemSpacing: "itemsep=-3pt,topsep=0pt",
+    titleSpace: "0pt",
+    sectionSpacing: "2pt}{1pt",
+    bulletsPerExperience: 3,
+    bulletsPerProject: 3,
+  },
+];
+
+function getCompactionLevel(level = 0) {
+  return COMPACTION_LEVELS[Math.max(0, Math.min(level, COMPACTION_LEVELS.length - 1))];
+}
+
+function pickProjectLinks(item) {
+  const list = Array.isArray(item.links) && item.links.length
+    ? item.links
+    : item.url
+      ? [{ url: item.url, label: "Link", type: "other" }]
+      : [];
+  return list.filter((link) => link?.url);
+}
+
+function renderProjectLinksLatex(item) {
+  const links = pickProjectLinks(item);
+  if (!links.length) return "";
+  const parts = links.map((link) => latexHref(link.url, link.label || "Link"));
+  return ` \\hfill ${parts.join(" \\textbar{} ")}`;
+}
+
+function buildLatexBody(data, template, options) {
+  const basics = data.basics || {};
+  const compact = template.id === "modern-compact";
+  const itemSpacing = options.itemSpacing;
+  const sectionSpacing = options.sectionSpacing;
+  const titleSpace = options.titleSpace;
+  const bulletsPerExperience = options.bulletsPerExperience ?? 5;
+  const bulletsPerProject = options.bulletsPerProject ?? 5;
+  const location = basics.location || "";
+
+  const contactParts = [
+    basics.email ? latexRawHref(`mailto:${basics.email}`, `\\faEnvelope\\ ${latexEsc(basics.email)}`) : "",
+    basics.phone ? `\\faPhone\\ ${latexEsc(basics.phone)}` : "",
+    location ? latexEsc(location) : "",
+    basics.linkedin ? latexRawHref(basics.linkedin, "\\faLinkedin\\ LinkedIn") : "",
+    basics.github ? latexRawHref(basics.github, "\\faGithub\\ GitHub") : "",
+    basics.portfolio ? latexRawHref(basics.portfolio, "\\faLink\\ Portfolio") : "",
+    basics.website ? latexRawHref(basics.website, "\\faLink\\ Website") : "",
+    ...((basics.links || []).map((link) => latexRawHref(link.url, `\\faLink\\ ${latexEsc(link.label || "Link")}`))),
+  ].filter(Boolean).join(" \\textperiodcentered\\ ");
+
+  const skills = (data.skills || [])
+    .filter((skill) => skill.category || skill.items?.length)
+    .map((skill) => `    \\item \\textbf{${latexEsc(skill.category)}:} ${latexEsc((skill.items || []).join(", "))}`)
+    .join("\n");
+
+  const experience = (data.experience || [])
+    .filter((item) => item.role || item.company || item.bullets?.length)
+    .slice(0, 4)
+    .map((item) => {
+      const dates = [item.startDate, item.endDate || (item.current ? "Present" : "")].filter(Boolean).join(" -- ");
+      const heading = [item.role, item.company].filter(Boolean).join(" -- ");
+
+      return `\\item\\resumetitle{${latexEsc(heading || "Experience")}}${item.location ? ` \\hfill ${latexEsc(item.location)}` : ""}${dates ? ` \\hfill ${latexEsc(dates)}` : ""}
+\\begin{itemize}[leftmargin=*,${itemSpacing},parsep=0pt,partopsep=0pt]
+${(item.bullets || []).slice(0, bulletsPerExperience).map((bullet) => `    \\item ${latexEsc(bullet)}`).join("\n")}
+\\end{itemize}`;
+    })
+    .join("\n\n");
+
+  const projects = (data.projects || [])
+    .filter((item) => item.name || item.description || item.bullets?.length)
+    .slice(0, 3)
+    .map((item) => `
+\\item\\resumetitle{${latexEsc(item.name || "Project")}}${renderProjectLinksLatex(item)}
+\\begin{itemize}[leftmargin=*,${itemSpacing},parsep=0pt,partopsep=0pt]
+${[item.description, ...(item.bullets || [])].filter(Boolean).slice(0, bulletsPerProject).map((bullet) => `    \\item ${latexEsc(bullet)}`).join("\n")}
+\\end{itemize}`)
+    .join("\n");
+
+  const education = (data.education || [])
+    .filter((item) => item.degree || item.institution)
+    .slice(0, 3)
+    .map((item) => `    \\item \\textbf{${latexEsc(item.degree || item.institution)}}${item.institution && item.degree ? `, ${latexEsc(item.institution)}` : ""}${item.location ? `, ${latexEsc(item.location)}` : ""}${item.endDate ? ` \\hfill ${latexEsc(item.endDate)}` : ""}`)
+    .join("\n");
+
+  const certifications = [...(data.certifications || []), ...(data.awards || [])]
+    .filter((item) => item.name || item.title || item.label)
+    .slice(0, 4)
+    .map((item) => `\\item ${latexEsc(item.name || item.title || item.label || "")}${item.url || item.link ? ` \\hfill ${latexHref(item.url || item.link, "Certificate")}` : ""}`)
+    .join("\n");
+
+  const summarySection = basics.summary ? `\\section*{Summary}
+${latexEsc(basics.summary)}` : "";
+  const skillsSection = skills ? `\\section*{Technical Skills}
+\\begin{itemize}[leftmargin=*,${itemSpacing},parsep=0pt,partopsep=0pt]
+${skills}
+\\end{itemize}` : "";
+  const experienceSection = compact && experience ? `\\section*{Experience}
+\\begin{itemize}[leftmargin=*,${itemSpacing},parsep=0pt,partopsep=0pt]
+${experience}
+\\end{itemize}` : "";
+  const projectsSection = projects ? `\\section*{Projects}
+\\begin{itemize}[leftmargin=*,${itemSpacing},parsep=0pt,partopsep=0pt]
+${projects}
+\\end{itemize}` : "";
+  const educationSection = education ? `\\section*{Education}
+\\begin{itemize}[leftmargin=*,${itemSpacing},parsep=0pt,partopsep=0pt]
+${education}
+\\end{itemize}` : "";
+  const certificationsSection = certifications ? `\\section*{Achievements \\& Certifications}
+\\begin{itemize}[leftmargin=*,${itemSpacing},parsep=0pt,partopsep=0pt]
+${certifications}
+\\end{itemize}` : "";
+
+  const fontSize = options.fontSize === 9 ? 9 : options.fontSize === 9.5 ? 10 : 10;
+  // \documentclass only supports 10/11/12pt; use \fontsize within document for finer control if needed.
+
+  const sideMargin = options.sideMarginAdjust ?? -0.5;
+  const textWidth = options.textWidthAdjust ?? 1.0;
+  const topMargin = options.topMarginAdjust ?? -0.75;
+  const textHeight = options.textHeightAdjust ?? 1.5;
+  const fontDirective = options.fontSize && options.fontSize < 10
+    ? `\\fontsize{${options.fontSize}}{${(options.fontSize * 1.15).toFixed(1)}}\\selectfont\n`
+    : "";
+
+  return `\\documentclass[letterpaper,${fontSize}pt]{article}
+\\usepackage{latexsym}
+\\usepackage[empty]{fullpage}
+\\usepackage{titlesec}
+\\usepackage{marvosym}
+\\usepackage[usenames,dvipsnames]{color}
+\\usepackage{verbatim}
+\\usepackage{enumitem}
+\\usepackage{hyperref}
+\\hypersetup{colorlinks=true,urlcolor=blue}
+\\usepackage[utf8]{inputenc}
+\\usepackage[T1]{fontenc}
+\\usepackage{fontawesome}
+\\usepackage{lmodern}
+\\renewcommand{\\familydefault}{\\sfdefault}
+\\addtolength{\\oddsidemargin}{${sideMargin}in}
+\\addtolength{\\evensidemargin}{${sideMargin}in}
+\\addtolength{\\textwidth}{${textWidth}in}
+\\addtolength{\\topmargin}{${topMargin}in}
+\\addtolength{\\textheight}{${textHeight}in}
+\\pagestyle{empty}
+\\titleformat{\\section}{\\large\\scshape\\raggedright}{}{0em}{}[\\titlerule]
+\\titlespacing{\\section}{0pt}{${sectionSpacing}}
+\\newcommand{\\resumetitle}[1]{%
+    \\vspace{${titleSpace}}
+    \\textbf{#1}
+}
+\\begin{document}
+${fontDirective}\\begin{center}
+    \\textbf{\\Large ${latexEsc(basics.fullName || "Your Name")}}
+    \\vspace{3pt}
+
+    \\small ${contactParts}
+\\end{center}
+${[summarySection, skillsSection, experienceSection, projectsSection, educationSection, certificationsSection].filter(Boolean).join("\n")}
+\\end{document}`;
 }
 
 function stripLatexPreamble(latexSource = "") {
@@ -302,109 +549,20 @@ export function renderLatexPreviewHtml({ latexSource, templateId }) {
 </html>`;
 }
 
-export function renderResumeLatex({ resumeData, templateId }) {
+export function renderResumeLatex({ resumeData, templateId, renderOptions }) {
   const template = getTemplate(templateId);
-  const data = resumeData || {};
-  const basics = data.basics || {};
   const compact = template.id === "modern-compact";
-  const itemSpacing = compact ? "itemsep=0pt,topsep=1pt" : "itemsep=1pt";
-  const titleSpace = compact ? "2pt" : "4pt";
-  const sectionSpacing = compact ? "5pt}{4pt" : "8pt}{8pt";
-  const location = basics.location || "";
-  const contactParts = [
-    basics.email ? latexRawHref(`mailto:${basics.email}`, `\\faEnvelope\\ ${latexEsc(basics.email)}`) : "",
-    basics.phone ? `\\faPhone\\ ${latexEsc(basics.phone)}` : "",
-    location ? latexEsc(location) : "",
-    basics.linkedin ? latexRawHref(basics.linkedin, "\\faLinkedin\\ LinkedIn") : "",
-    basics.github ? latexRawHref(basics.github, "\\faGithub\\ GitHub") : "",
-    basics.portfolio ? latexRawHref(basics.portfolio, "\\faLink\\ Portfolio") : "",
-    basics.website ? latexRawHref(basics.website, "\\faLink\\ Website") : "",
-  ].filter(Boolean).join(" \\textperiodcentered\\ ");
-  const skills = (data.skills || [])
-    .filter((skill) => skill.category || skill.items?.length)
-    .map((skill) => `    \\item \\textbf{${latexEsc(skill.category)}:} ${latexEsc((skill.items || []).join(", "))}`)
-    .join("\n");
-  const experience = (data.experience || []).filter((item) => item.role || item.company || item.bullets?.length).slice(0, 4).map((item) => {
-    const dates = [item.startDate, item.endDate || (item.current ? "Present" : "")].filter(Boolean).join(" -- ");
-    const heading = [item.role, item.company].filter(Boolean).join(" -- ");
-
-    return `\\item\\resumetitle{${latexEsc(heading || "Experience")}}${item.location ? ` \\hfill ${latexEsc(item.location)}` : ""}${dates ? ` \\hfill ${latexEsc(dates)}` : ""}
-\\begin{itemize}[leftmargin=*,${itemSpacing},parsep=0pt,partopsep=0pt]
-${(item.bullets || []).slice(0, compact ? 4 : 5).map((bullet) => `    \\item ${latexEsc(bullet)}`).join("\n")}
-\\end{itemize}`;
-  }).join("\n\n");
-  const projects = (data.projects || []).filter((item) => item.name || item.description || item.bullets?.length).slice(0, 3).map((item) => `
-\\item\\resumetitle{${latexEsc(item.name || "Project")}}${item.url ? ` \\hfill ${latexHref(item.url, "Link")}` : ""}
-\\begin{itemize}[leftmargin=*,${itemSpacing},parsep=0pt,partopsep=0pt]
-${[item.description, ...(item.bullets || [])].filter(Boolean).slice(0, compact ? 3 : 5).map((bullet) => `    \\item ${latexEsc(bullet)}`).join("\n")}
-\\end{itemize}`).join("\n");
-  const education = (data.education || [])
-    .filter((item) => item.degree || item.institution)
-    .slice(0, 3)
-    .map((item) => `    \\item \\textbf{${latexEsc(item.degree || item.institution)}}${item.institution && item.degree ? `, ${latexEsc(item.institution)}` : ""}${item.location ? `, ${latexEsc(item.location)}` : ""}${item.endDate ? ` \\hfill ${latexEsc(item.endDate)}` : ""}`)
-    .join("\n");
-  const certifications = [...(data.certifications || []), ...(data.awards || [])]
-    .filter((item) => item.name || item.title || item.label)
-    .slice(0, 4)
-    .map((item) => `\\item ${latexEsc(item.name || item.title || item.label || "")}${item.url || item.link ? ` \\hfill ${latexHref(item.url || item.link, "Certificate")}` : ""}`)
-    .join("\n");
-  const summarySection = basics.summary ? `\\section*{Summary}
-${latexEsc(basics.summary)}` : "";
-  const skillsSection = skills ? `\\section*{Technical Skills}
-\\begin{itemize}[leftmargin=*,${itemSpacing},parsep=0pt,partopsep=0pt]
-${skills}
-\\end{itemize}` : "";
-  const experienceSection = compact && experience ? `\\section*{Experience}
-\\begin{itemize}[leftmargin=*,${itemSpacing},parsep=0pt,partopsep=0pt]
-${experience}
-\\end{itemize}` : "";
-  const projectsSection = projects ? `\\section*{Projects}
-\\begin{itemize}[leftmargin=*,${itemSpacing},parsep=0pt,partopsep=0pt]
-${projects}
-\\end{itemize}` : "";
-  const educationSection = education ? `\\section*{Education}
-\\begin{itemize}[leftmargin=*,${itemSpacing},parsep=0pt,partopsep=0pt]
-${education}
-\\end{itemize}` : "";
-  const certificationsSection = certifications ? `\\section*{Achievements \\& Certifications}
-\\begin{itemize}[leftmargin=*,${itemSpacing},parsep=0pt,partopsep=0pt]
-${certifications}
-\\end{itemize}` : "";
-
-  return `\\documentclass[letterpaper,10pt]{article}
-\\usepackage{latexsym}
-\\usepackage[empty]{fullpage}
-\\usepackage{titlesec}
-\\usepackage{marvosym}
-\\usepackage[usenames,dvipsnames]{color}
-\\usepackage{verbatim}
-\\usepackage{enumitem}
-\\usepackage{hyperref}
-\\hypersetup{colorlinks=true,urlcolor=blue}
-\\usepackage[utf8]{inputenc}
-\\usepackage[T1]{fontenc}
-\\usepackage{fontawesome}
-\\usepackage{lmodern}
-\\renewcommand{\\familydefault}{\\sfdefault}
-\\addtolength{\\oddsidemargin}{-0.5in}
-\\addtolength{\\evensidemargin}{-0.5in}
-\\addtolength{\\textwidth}{1.0in}
-\\addtolength{\\topmargin}{-0.75in}
-\\addtolength{\\textheight}{1.5in}
-\\pagestyle{empty}
-\\titleformat{\\section}{\\large\\scshape\\raggedright}{}{0em}{}[\\titlerule]
-\\titlespacing{\\section}{0pt}{${sectionSpacing}}
-\\newcommand{\\resumetitle}[1]{%
-    \\vspace{${titleSpace}}
-    \\textbf{#1}
+  const baseOptions = compact ? compactRenderOptions : defaultRenderOptions;
+  const merged = { ...baseOptions, ...(renderOptions || {}) };
+  return buildLatexBody(resumeData || {}, template, merged);
 }
-\\begin{document}
-\\begin{center}
-    \\textbf{\\Large ${latexEsc(basics.fullName || "Your Name")}}
-    \\vspace{3pt}
-    
-    \\small ${contactParts}
-\\end{center}
-${[summarySection, skillsSection, experienceSection, projectsSection, educationSection, certificationsSection].filter(Boolean).join("\n")}
-\\end{document}`;
+
+export function renderResumeLatexAtCompactionLevel({ resumeData, templateId, level = 0 }) {
+  const template = getTemplate(templateId);
+  const compact = template.id === "modern-compact";
+  const baseOptions = compact ? compactRenderOptions : defaultRenderOptions;
+  const levelOptions = compact ? getCompactionLevel(level) : { ...defaultRenderOptions };
+  return buildLatexBody(resumeData || {}, template, { ...baseOptions, ...levelOptions });
 }
+
+export const RENDER_COMPACTION_LEVELS = COMPACTION_LEVELS.length;

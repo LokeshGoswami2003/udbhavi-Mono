@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(node -e \"import\\('./src/app.js'\\).then\\(\\(m\\)=>{console.log\\('createApp:',typeof m.createApp\\);}\\).catch\\(e=>{console.error\\('Module load failed:', e.message\\); process.exit\\(1\\);}\\)\")",
+      "Bash(node -e ' *)"
+    ]
+  }
+}

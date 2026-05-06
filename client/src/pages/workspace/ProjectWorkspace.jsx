@@ -2,27 +2,27 @@ import {
   ArrowRight,
   Bot,
   CheckCircle2,
-  FileText,
   Loader2,
   Printer,
   SendHorizontal,
   Sparkles,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { Button } from '../../components/ui/Button'
+import { PdfViewer } from './components/PdfViewer'
 
 const templates = [
   {
     id: 'classic-ats',
-    name: 'Template 1',
-    desc: 'Clean ATS layout with projects first.',
+    name: 'Template 1 — Classic ATS',
+    desc: 'Clean ATS layout with projects first. Best for early-career, projects-led resumes.',
     sections: ['Summary', 'Technical Skills', 'Projects', 'Education', 'Achievements'],
     accent: '#111827',
   },
   {
     id: 'modern-compact',
-    name: 'Template 2',
-    desc: 'Compact layout with experience included.',
+    name: 'Template 2 — Modern Compact',
+    desc: 'Dense, single-page layout that includes Experience plus Projects.',
     sections: ['Summary', 'Technical Skills', 'Experience', 'Projects', 'Education'],
     accent: '#111827',
   },
@@ -30,157 +30,37 @@ const templates = [
 
 const previewContent = {
   'classic-ats': {
-    location: 'Faridabad',
     summary:
-      'B.Tech CSE graduate with hands-on experience in MERN stack development, REST APIs, and cloud deployment. Built a full-stack social media application using MongoDB, Express, React, and Node.js with features like authentication, API integration, and frontend-backend connectivity. Developed a real-time data-fetching project using Swiggy APIs, working with complex JSON schemas and resolving CORS issues by creating a custom proxy server on Google Cloud VM using Nginx.',
+      'B.Tech CSE graduate with hands-on MERN-stack experience. Builds full-stack platforms with REST APIs, JWT auth, and cloud deployment. Comfortable with custom proxies, complex JSON parsing, and real-time UI patterns.',
     skills: [
       ['Languages', 'JavaScript, TypeScript, Java, C++'],
-      ['Web Development', 'React.js, Node.js, Express.js, HTML, CSS, RESTful APIs'],
+      ['Web', 'React.js, Node.js, Express.js, REST APIs'],
       ['Databases', 'MongoDB, MySQL'],
-      ['Cloud', 'AWS (EC2, Lambda, S3), Firebase, Google Cloud (Compute Engine)'],
-      ['Tools', 'Git, Docker, Nginx'],
-      ['Methodologies', 'Agile, Scrum, CI/CD'],
+      ['Cloud', 'AWS, Firebase, Google Cloud'],
     ],
-    experience: [],
     projects: [
-      {
-        name: 'Social-Media Platform',
-        links: 'GitHub | YouTube | Live',
-        bullets: [
-          'Built a full-stack social media platform using ReactJS, Node.js, Express, MongoDB with 25+ RESTful APIs covering posts, users, likes, comments, and follow system.',
-          'Implemented secure authentication and authorization using JWT, bcrypt, and custom middleware for validation, error handling, and rate limiting.',
-          'Integrated Cloudinary for optimized media uploads with auto-compression and caching, reducing image load times by 20-25%.',
-          'Improved API reliability by 30% using Axios interceptors and designed a scalable MongoDB schema with indexing.',
-          'Developed structured backend logic and reusable frontend components for clean architecture and consistent data flow.',
-        ],
-      },
-      {
-        name: 'MunchMob Swiggy Clone',
-        links: 'GitHub | Snapshots',
-        bullets: [
-          'Developed a fast, responsive ReactJS/Hooks interface to fetch and display real-time restaurant and menu data by reverse-engineering complex Swiggy API JSON schemas.',
-          'Designed a custom Node.js/Express proxy server to fully bypass CORS restrictions and enable stable cross-origin data fetching.',
-          'Deployed the backend on a Google Cloud VM and configured Nginx, custom domain, and HTTPS for reliable API access.',
-          'Implemented efficient client-side data fetching using Axios with interceptors, reducing redundant network requests.',
-          'Optimized parsing logic for large nested JSON responses, reducing processing time and enabling smoother UI updates.',
-        ],
-      },
-      {
-        name: 'The Game Room - Real-Time Tic Tac Toe',
-        links: 'GitHub | YouTube',
-        bullets: [
-          'Designed and implemented key ReactJS components for the real-time Tic Tac Toe interface, including board, turn indicators, and result modals.',
-          'Built interactive UI elements and managed game state using React Hooks, reducing unnecessary re-renders.',
-          'Collaborated with teammates handling Socket.io and backend game logic to ensure seamless UI-server synchronization.',
-        ],
-      },
+      ['Social-Media Platform', 'GitHub | YouTube | Live'],
+      ['MunchMob Swiggy Clone', 'GitHub | Snapshots'],
+      ['The Game Room — Tic Tac Toe', 'GitHub | YouTube'],
     ],
+    showExperience: false,
   },
   'modern-compact': {
-    location: 'Hyderabad',
     summary:
-      'Software Development Intern and B.Tech CSE graduate with hands-on experience in microservices, REST APIs, WebSockets, API Gateway, API authentication, React, Node.js, MongoDB, and cloud deployment. Built scalable backend services, real-time applications, and full-stack products, with exposure to hierarchy-based systems, third-party integrations, and configurable business logic.',
+      'Software Development Intern and B.Tech CSE graduate with hands-on microservices, REST APIs, WebSockets, and React/Node.js. Builds scalable backend services and real-time apps.',
     skills: [
       ['Languages', 'JavaScript, TypeScript, Java, C++'],
-      ['Backend', 'Node.js, Express.js, REST APIs, Microservices, API Gateway, WebSockets, API Key Authentication, JWT'],
-      ['Frontend', 'React.js, HTML, CSS, Axios'],
-      ['Databases', 'MongoDB, MySQL'],
-      ['Architecture & Systems', 'Service Integration, Third-Party API Access, In-Memory Hierarchy Mapping, Real-Time Chat Systems'],
-      ['Cloud, Tools & Practices', 'AWS, Firebase, Google Cloud, Git, Docker, Nginx, Linux, Agile, Scrum, CI/CD'],
-    ],
-    experience: [
-      {
-        role: 'Software Development Intern',
-        meta: 'Arcstream Technologies, Hyderabad',
-        dates: 'Jan 2026 - Present',
-        bullets: [
-          'Worked on a production-oriented microservice architecture, contributing to backend services, service integrations, and API Gateway-based request routing.',
-          'Built an independent Connect Service microservice and integrated a real-time chat application using WebSockets for low-latency communication.',
-          'Implemented in-memory hierarchical data construction using relationship mappings to build and traverse hierarchy-based user structures.',
-          'Designed API key-based authentication for secure third-party access, and contributed across backend, frontend, and Dynamic Rule Engine modules.',
-        ],
-      },
+      ['Backend', 'Node.js, Express.js, REST APIs, Microservices, WebSockets'],
+      ['Frontend', 'React.js, Axios'],
+      ['Cloud', 'AWS, Firebase, Google Cloud, Docker, Nginx'],
     ],
     projects: [
-      {
-        name: 'Social-Media Platform',
-        links: 'GitHub | YouTube | Live',
-        bullets: [
-          'Built a full-stack social media platform using ReactJS, Node.js, Express, MongoDB with 25+ REST APIs.',
-          'Implemented secure authentication and authorization using JWT, bcrypt, plus middleware for validation and rate limiting.',
-          'Integrated Cloudinary, Axios interceptors, and optimized MongoDB schemas with indexing.',
-        ],
-      },
-      {
-        name: 'MunchMob Swiggy Clone',
-        links: 'GitHub | Snapshots',
-        bullets: [
-          'Developed a responsive ReactJS interface to fetch and display restaurant and menu data from complex Swiggy API JSON schemas.',
-          'Built a custom Node.js/Express proxy server to bypass CORS restrictions and enable stable data fetching.',
-          'Deployed the backend on a Google Cloud VM with Nginx, HTTPS, and a custom domain.',
-        ],
-      },
-      {
-        name: 'The Game Room - Real-Time Tic Tac Toe',
-        links: 'GitHub | YouTube',
-        bullets: [
-          'Designed and implemented key ReactJS components for a real-time Tic Tac Toe interface.',
-          'Collaborated with teammates working on Socket.io and backend logic to ensure smooth gameplay state updates.',
-        ],
-      },
+      ['Social-Media Platform', 'GitHub | YouTube | Live'],
+      ['MunchMob Swiggy Clone', 'GitHub | Snapshots'],
+      ['The Game Room — Tic Tac Toe', 'GitHub | YouTube'],
     ],
+    showExperience: true,
   },
-}
-
-function templatePreviewHtml(template) {
-  const compact = template.id === 'modern-compact'
-  const content = previewContent[template.id]
-  const itemSpacing = compact ? '0' : '2px'
-  const sectionSpacing = compact ? '5px 0 4px' : '8px 0 8px'
-  const renderBullets = (bullets) => `<ul>${bullets.map((bullet) => `<li>${bullet}</li>`).join('')}</ul>`
-  const renderEntry = (item) => `
-    <div class="entry">
-      <div class="head"><span>${item.name || item.role}</span><span>${item.links || item.dates || ''}</span></div>
-      ${item.meta ? `<p>${item.meta}</p>` : ''}
-      ${renderBullets(item.bullets)}
-    </div>`
-
-  return `<!doctype html>
-<html>
-<head>
-<meta charset="utf-8" />
-<style>
-  body { margin: 0; background: #f8fafc; color: #111827; }
-  .page { width: 8.5in; min-height: 11in; padding: .58in; box-sizing: border-box; background: white; font-family: Arial, Helvetica, sans-serif; font-size: ${compact ? '10px' : '10.4px'}; line-height: ${compact ? '1.28' : '1.32'}; }
-  h1 { margin: 0; text-align: center; font-size: 23px; letter-spacing: 0; }
-  .contact { margin: 4px 0 0; text-align: center; color: #475569; }
-  h2 { margin: ${sectionSpacing}; border-bottom: 1px solid ${template.accent}; color: ${template.accent}; font-size: 12px; letter-spacing: 0; text-transform: uppercase; }
-  p { margin: 0 0 4px; }
-  .head { display: flex; justify-content: space-between; gap: 12px; font-weight: 700; }
-  ul { margin: 3px 0 0 15px; padding: 0; }
-  li { margin: ${itemSpacing} 0; }
-  .entry { margin: 0 0 ${compact ? '4px' : '7px'}; }
-  .summary::before { content: "• "; }
-</style>
-</head>
-<body>
-  <article class="page">
-    <h1>Lokesh Goswami</h1>
-    <p class="contact">lokesh.goswami.2003@gmail.com · +917017095682 · ${content.location} · LinkedIn · GitHub · LeetCode</p>
-    <h2>Summary</h2>
-    <p class="summary">${content.summary}</p>
-    <h2>Technical Skills</h2>
-    <ul>${content.skills.map(([label, value]) => `<li><strong>${label}:</strong> ${value}</li>`).join('')}</ul>
-    ${content.experience.length ? `<h2>Experience</h2>${content.experience.map(renderEntry).join('')}` : ''}
-    <h2>Projects</h2>
-    ${content.projects.map(renderEntry).join('')}
-    <h2>Education</h2>
-    <ul><li><strong>B.Tech in Computer Science and Engineering</strong> GLA University, Mathura <span style="float:right">2024</span></li><li><strong>Senior Secondary (Class 12)</strong> Saraswati Vidya Mandir, Kosi Kalan <span style="float:right">2020</span></li></ul>
-    <h2>Achievements & Certifications</h2>
-    <ul><li>Solved <strong>200+ DSA problems</strong> on LeetCode and completed DSA from <strong>Coding Ninjas</strong> <span style="float:right">Certificate</span></li><li>Built multiple full-stack MERN projects and completed the <strong>CodingShuttle Full-Stack Development Course</strong> <span style="float:right">Certificate</span></li></ul>
-  </article>
-</body>
-</html>`
 }
 
 export function ProjectWorkspace({ project, busy, onSelectTemplate, onSendMessage, onDownloadPdf, onLoadPreviewPdf }) {
@@ -199,58 +79,7 @@ export function ProjectWorkspace({ project, busy, onSelectTemplate, onSendMessag
   }
 
   if (!project.templateId) {
-    return (
-      <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden px-4 py-4 lg:px-6">
-        <div className="mx-auto w-full max-w-6xl">
-          <p className="text-sm font-bold text-blue-600 dark:text-blue-300">{project.title}</p>
-          <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h1 className="text-2xl font-black sm:text-3xl">Choose a template</h1>
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Pick the resume layout that best fits this role.</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mx-auto mt-4 grid min-h-0 w-full max-w-6xl gap-4 overflow-y-auto pb-2 md:grid-cols-2">
-            {templates.map((template) => (
-              <article
-                key={template.id}
-                className="flex min-h-0 flex-col rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition hover:border-blue-400 dark:border-white/10 dark:bg-slate-900"
-              >
-                <div className="grid min-h-0 flex-1 place-items-center overflow-hidden rounded-md bg-slate-100 p-2 dark:bg-slate-950">
-                  <div className="relative aspect-[8.5/11] h-[min(56dvh,620px)] max-h-full overflow-hidden bg-white shadow-sm">
-                    <iframe
-                      title={`${template.name} template preview`}
-                      srcDoc={templatePreviewHtml(template)}
-                      className="pointer-events-none absolute left-0 top-0 h-[1056px] w-[816px] origin-top-left scale-[0.42] border-0 bg-white"
-                      tabIndex={-1}
-                      scrolling="no"
-                    />
-                  </div>
-                </div>
-                <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <h2 className="text-sm font-black">{template.name}</h2>
-                    <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">{template.desc}</p>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {template.sections.slice(0, 4).map((section) => (
-                        <span key={section} className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600 dark:bg-white/10 dark:text-slate-300">
-                          {section}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <Button as="button" type="button" variant="accent" className="min-h-10 shrink-0 px-3 py-2 text-xs" onClick={() => onSelectTemplate(project.id, template.id)} disabled={busy.selectingTemplate}>
-                    <CheckCircle2 size={15} aria-hidden="true" />
-                    {busy.selectingTemplate ? 'Generating' : 'Use template'}
-                    <ArrowRight size={15} aria-hidden="true" />
-                  </Button>
-                </div>
-              </article>
-            ))}
-        </div>
-      </section>
-    )
+    return <TemplateChooser project={project} busy={busy} onSelectTemplate={onSelectTemplate} />
   }
 
   return (
@@ -264,11 +93,147 @@ export function ProjectWorkspace({ project, busy, onSelectTemplate, onSendMessag
       </header>
 
       <div className="grid min-h-0 lg:grid-cols-[minmax(0,1fr)_minmax(420px,32vw)] xl:grid-cols-[minmax(0,1fr)_500px]">
-        <PdfPreview project={project} busy={busy} onLoadPreviewPdf={onLoadPreviewPdf} />
-
+        <PdfPreviewPanel project={project} busy={busy} onLoadPreviewPdf={onLoadPreviewPdf} onDownloadPdf={onDownloadPdf} />
         <ChatPanel project={project} busy={busy} onSendMessage={onSendMessage} />
       </div>
     </section>
+  )
+}
+
+function TemplateChooser({ project, busy, onSelectTemplate }) {
+  return (
+    <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden px-4 py-4 lg:px-6">
+      <div className="mx-auto w-full max-w-7xl">
+        <p className="text-sm font-bold text-blue-600 dark:text-blue-300">{project.title}</p>
+        <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-black sm:text-3xl">Choose a template</h1>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+              Pick the resume layout that best fits this role. The selected template controls section order and density.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mx-auto mt-4 grid min-h-0 w-full max-w-7xl gap-5 overflow-y-auto pb-4 lg:grid-cols-2">
+        {templates.map((template) => (
+          <TemplateCard
+            key={template.id}
+            template={template}
+            disabled={busy.selectingTemplate}
+            onSelect={() => onSelectTemplate(project.id, template.id)}
+          />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function TemplateCard({ template, disabled, onSelect }) {
+  const content = previewContent[template.id]
+  return (
+    <article className="flex h-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:border-blue-400 hover:shadow-lg dark:border-white/10 dark:bg-slate-900">
+      <div className="grid place-items-center bg-slate-100 p-4 dark:bg-slate-950">
+        <div className="aspect-[8.5/11] w-full max-w-[420px] overflow-hidden rounded-md bg-white shadow-md ring-1 ring-slate-200 dark:ring-white/10">
+          <TemplateThumbnail template={template} content={content} />
+        </div>
+      </div>
+      <div className="flex flex-1 flex-col gap-4 p-5">
+        <div>
+          <h2 className="text-base font-black text-slate-900 dark:text-white">{template.name}</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">{template.desc}</p>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {template.sections.map((section) => (
+            <span
+              key={section}
+              className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600 dark:bg-white/10 dark:text-slate-300"
+            >
+              {section}
+            </span>
+          ))}
+        </div>
+        <div className="mt-auto pt-2">
+          <Button
+            as="button"
+            type="button"
+            variant="accent"
+            className="w-full justify-center"
+            onClick={onSelect}
+            disabled={disabled}
+          >
+            <CheckCircle2 size={16} aria-hidden="true" />
+            {disabled ? 'Generating' : 'Use this template'}
+            <ArrowRight size={16} aria-hidden="true" />
+          </Button>
+        </div>
+      </div>
+    </article>
+  )
+}
+
+function TemplateThumbnail({ template, content }) {
+  return (
+    <div className="flex h-full w-full flex-col gap-2 px-5 py-5 text-[8px] leading-tight text-slate-800">
+      <div className="text-center">
+        <p className="text-[14px] font-black tracking-tight text-slate-900">Lokesh Goswami</p>
+        <p className="mt-0.5 text-[7px] font-bold text-slate-500">
+          email@example.com · +91 0000 · {template.id === 'modern-compact' ? 'Hyderabad' : 'Faridabad'} · LinkedIn · GitHub · LeetCode
+        </p>
+      </div>
+
+      <ThumbSection title="Summary">
+        <p className="text-slate-700">{content.summary}</p>
+      </ThumbSection>
+
+      <ThumbSection title="Technical Skills">
+        <ul className="ml-3 list-disc">
+          {content.skills.map(([label, value]) => (
+            <li key={label}>
+              <span className="font-bold">{label}:</span> {value}
+            </li>
+          ))}
+        </ul>
+      </ThumbSection>
+
+      {content.showExperience ? (
+        <ThumbSection title="Experience">
+          <div className="font-bold">Software Development Intern — Arcstream Technologies</div>
+          <div className="text-slate-500">Hyderabad · Jan 2026 – Present</div>
+          <ul className="ml-3 list-disc">
+            <li>Microservice architecture, API Gateway routing, and service integrations.</li>
+            <li>Real-time chat via WebSockets in a Connect Service microservice.</li>
+          </ul>
+        </ThumbSection>
+      ) : null}
+
+      <ThumbSection title="Projects">
+        {content.projects.map(([name, links]) => (
+          <div key={name} className="flex justify-between gap-2">
+            <span className="font-bold">{name}</span>
+            <span className="text-blue-600">{links}</span>
+          </div>
+        ))}
+      </ThumbSection>
+
+      <ThumbSection title="Education">
+        <div className="flex justify-between">
+          <span>
+            <span className="font-bold">B.Tech CSE</span>, GLA University, Mathura
+          </span>
+          <span>2024</span>
+        </div>
+      </ThumbSection>
+    </div>
+  )
+}
+
+function ThumbSection({ title, children }) {
+  return (
+    <div>
+      <p className="border-b border-slate-300 pb-0.5 text-[9px] font-black uppercase tracking-wide text-slate-900">{title}</p>
+      <div className="mt-1 text-slate-700">{children}</div>
+    </div>
   )
 }
 
@@ -290,115 +255,51 @@ function PreviewActions({ project, busy, onDownloadPdf }) {
   )
 }
 
-function PdfPreview({ project, busy, onLoadPreviewPdf }) {
-  const [pdfUrl, setPdfUrl] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
-  const pdfUrlRef = useRef('')
-  const compiledAt = project.ai?.pdf?.compiledAt || ''
+function PdfPreviewPanel({ project, busy, onLoadPreviewPdf, onDownloadPdf }) {
+  const reloadKey = `${project.id}:${project.activeVersionId || ''}:${project.ai?.pdf?.latexHash || ''}:${project.ai?.pdf?.compiledAt || ''}:${project.updatedAt || ''}`
   const hasLatexSource = Boolean(project.ai?.latexSource)
-  const previewStatus = busy.selectingTemplate || busy.sendingMessage || project.status === 'processing'
-    ? 'Updating resume...'
-    : loading || busy.loadingPreview
-      ? 'Compiling PDF...'
-      : pdfUrl
-        ? 'Preview ready'
-        : 'Building resume...'
+  const ready = project.status === 'ready' && hasLatexSource
 
-  useEffect(() => {
-    let isActive = true
+  const loadPdf = useCallback(async () => {
+    if (!ready) return null
+    return onLoadPreviewPdf(project.id)
+  }, [onLoadPreviewPdf, project.id, ready])
 
-    async function loadPdf() {
-      if (!project?.id || project.status !== 'ready' || !hasLatexSource) {
-        if (pdfUrlRef.current) {
-          URL.revokeObjectURL(pdfUrlRef.current)
-          pdfUrlRef.current = ''
-        }
-        setPdfUrl('')
-        setError('')
-        return
-      }
+  const busyLabel = busy.selectingTemplate || project.status === 'processing'
+    ? 'Generating draft...'
+    : busy.sendingMessage
+      ? 'Updating preview...'
+      : busy.loadingPreview
+        ? 'Compiling PDF...'
+        : ''
 
-      setLoading(true)
-      setError('')
-
-      try {
-        const blob = await onLoadPreviewPdf(project.id)
-        const objectUrl = URL.createObjectURL(blob)
-
-        if (isActive) {
-          if (pdfUrlRef.current) {
-            URL.revokeObjectURL(pdfUrlRef.current)
-          }
-          pdfUrlRef.current = objectUrl
-          setPdfUrl(objectUrl)
-        } else {
-          URL.revokeObjectURL(objectUrl)
-        }
-      } catch (loadError) {
-        if (isActive) {
-          setPdfUrl('')
-          setError(loadError.message || 'Could not load the PDF preview.')
-        }
-      } finally {
-        if (isActive) {
-          setLoading(false)
-        }
-      }
-    }
-
-    loadPdf()
-
-    return () => {
-      isActive = false
-    }
-  }, [compiledAt, hasLatexSource, onLoadPreviewPdf, project?.activeVersionId, project?.id, project?.status])
-
-  useEffect(() => () => {
-    if (pdfUrlRef.current) {
-      URL.revokeObjectURL(pdfUrlRef.current)
-    }
-  }, [])
+  if (!ready) {
+    return (
+      <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-[#1f2937]">
+        <div className="flex min-h-12 items-center justify-between gap-3 border-b border-white/10 bg-[#293241] px-4 text-white">
+          <span className="text-sm font-black">PDF preview</span>
+          <span className="rounded-md bg-white/10 px-2 py-1 text-[11px] font-bold uppercase text-slate-200">
+            {busyLabel || 'Building resume...'}
+          </span>
+        </div>
+        <div className="grid min-h-0 place-items-center p-6 text-center text-sm font-bold text-slate-200">
+          <div>
+            <Loader2 className="mx-auto mb-3 animate-spin text-blue-300" size={22} aria-hidden="true" />
+            <p>{busyLabel || 'Building your resume preview...'}</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-[#111827]">
-      <div className="flex min-h-12 items-center justify-between gap-3 border-b border-white/10 bg-[#293241] px-4">
-        <div className="flex items-center gap-2 text-sm font-black text-white">
-          <FileText size={17} className="text-blue-200" aria-hidden="true" />
-          PDF preview
-        </div>
-        <span className="rounded-md bg-white/10 px-2 py-1 text-[11px] font-black uppercase text-slate-200">
-          {previewStatus}
-        </span>
-      </div>
-
-      <div className="min-h-0 bg-[#1f2937] p-4">
-        <div className="h-full overflow-hidden rounded-sm bg-white shadow-[0_18px_50px_rgba(0,0,0,0.45)]">
-          {pdfUrl ? (
-            <div className="relative h-full">
-              <iframe title="Resume PDF preview" src={pdfUrl} className="h-full w-full border-0 bg-white" />
-              {loading || busy.loadingPreview || busy.sendingMessage || busy.selectingTemplate ? (
-                <div className="absolute right-3 top-3 flex items-center gap-2 rounded-md bg-slate-950/80 px-3 py-2 text-xs font-bold text-white shadow-lg">
-                  <Loader2 className="animate-spin" size={14} aria-hidden="true" />
-                  {previewStatus}
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <div className="grid h-full place-items-center bg-slate-950 p-8 text-center text-sm font-bold text-slate-200">
-              {error ? (
-                <div className="max-w-md rounded-lg border border-red-400/30 bg-red-500/10 p-4 text-red-100">{error}</div>
-              ) : (
-                <div>
-                  <Loader2 className="mx-auto mb-3 animate-spin text-blue-300" size={22} aria-hidden="true" />
-                  <p>{previewStatus}</p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+    <PdfViewer
+      title="Resume PDF"
+      loadPdf={loadPdf}
+      reloadKey={reloadKey}
+      busyLabel={busyLabel || undefined}
+      onDownload={onDownloadPdf ? () => onDownloadPdf(project.id) : undefined}
+    />
   )
 }
 
@@ -431,9 +332,7 @@ function ChatPanel({ project, busy, onSendMessage }) {
             <Bot size={18} className="text-blue-600 dark:text-blue-300" aria-hidden="true" />
             AI chat
           </div>
-          <span className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-black uppercase text-slate-500 dark:bg-white/10 dark:text-slate-300">
-            {project.status}
-          </span>
+          <ChatStatusPill project={project} busy={busy} />
         </div>
         {feedbackActions.length ? (
           <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
@@ -452,16 +351,16 @@ function ChatPanel({ project, busy, onSendMessage }) {
         ) : (
           <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
             {['Paste job description', 'Improve wording', 'Fix links'].map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => onSendMessage(project.id, item)}
-              disabled={busy.sendingMessage}
-              className="shrink-0 rounded-md bg-slate-100 px-2.5 py-1.5 text-[11px] font-black text-slate-600 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-white/10 dark:text-slate-300 dark:hover:bg-white/15"
-            >
-              {item}
-            </button>
-          ))}
+              <button
+                key={item}
+                type="button"
+                onClick={() => onSendMessage(project.id, item)}
+                disabled={busy.sendingMessage}
+                className="shrink-0 rounded-md bg-slate-100 px-2.5 py-1.5 text-[11px] font-black text-slate-600 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-white/10 dark:text-slate-300 dark:hover:bg-white/15"
+              >
+                {item}
+              </button>
+            ))}
           </div>
         )}
       </div>
@@ -469,12 +368,17 @@ function ChatPanel({ project, busy, onSendMessage }) {
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
         <div className="grid gap-3">
           {(project.ai?.messages || []).map((message, index) => (
-            <ChatMessage key={`${message.role}-${index}`} message={message} busy={busy} onQuickReply={(reply) => onSendMessage(project.id, reply)} />
+            <ChatMessage
+              key={`${message.role}-${index}`}
+              message={message}
+              busy={busy}
+              onQuickReply={(reply) => onSendMessage(project.id, reply)}
+            />
           ))}
           {busy.sendingMessage && project.templateId ? (
             <div className="mr-auto flex max-w-[92%] items-center gap-2 rounded-lg bg-blue-50 p-3 text-sm font-bold text-blue-950 dark:bg-blue-500/10 dark:text-blue-100">
               <Loader2 className="animate-spin" size={16} aria-hidden="true" />
-              Updating the draft
+              Updating resume...
             </div>
           ) : null}
           <div ref={messagesEndRef} />
@@ -490,7 +394,14 @@ function ChatPanel({ project, busy, onSendMessage }) {
             className="max-h-32 min-h-14 flex-1 resize-y bg-transparent px-2 py-2 text-sm leading-6 outline-none"
             disabled={busy.sendingMessage}
           />
-          <Button as="button" type="submit" variant="accent" className="min-h-12 px-4 py-2" disabled={busy.sendingMessage} aria-label="Send message">
+          <Button
+            as="button"
+            type="submit"
+            variant="accent"
+            className="min-h-12 px-4 py-2"
+            disabled={busy.sendingMessage}
+            aria-label="Send message"
+          >
             {busy.sendingMessage ? <Loader2 className="animate-spin" size={17} aria-hidden="true" /> : <SendHorizontal size={17} aria-hidden="true" />}
           </Button>
         </div>
@@ -499,12 +410,39 @@ function ChatPanel({ project, busy, onSendMessage }) {
   )
 }
 
+function ChatStatusPill({ project, busy }) {
+  let label = project.status
+  let cls = 'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300'
+
+  if (busy.sendingMessage) {
+    label = 'Updating resume'
+    cls = 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-200'
+  } else if (busy.loadingPreview) {
+    label = 'Compiling PDF'
+    cls = 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-200'
+  } else if (project.status === 'failed') {
+    label = 'Failed'
+    cls = 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-200'
+  } else if (project.status === 'ready') {
+    label = 'Ready'
+    cls = 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200'
+  }
+
+  return (
+    <span className={`rounded-md px-2 py-1 text-[11px] font-black uppercase ${cls}`}>{label}</span>
+  )
+}
+
 function ChatMessage({ message, busy, onQuickReply }) {
   const metadata = message.metadata || {}
   const isUser = message.role === 'user'
 
   return (
-    <div className={`max-w-[92%] rounded-lg p-3 text-sm leading-6 ${isUser ? 'ml-auto bg-slate-100 dark:bg-white/10' : 'mr-auto bg-blue-50 dark:bg-blue-500/10'}`}>
+    <div
+      className={`max-w-[92%] rounded-lg p-3 text-sm leading-6 ${
+        isUser ? 'ml-auto bg-slate-100 dark:bg-white/10' : 'mr-auto bg-blue-50 dark:bg-blue-500/10'
+      }`}
+    >
       <p>{message.content}</p>
 
       {!isUser && metadata.changeSummary?.length ? (

@@ -13,6 +13,20 @@ import {
   updateProject,
 } from "./project.service.js";
 
+function setPdfHeaders(res, compiled, { disposition }) {
+  res.setHeader("content-type", "application/pdf");
+  res.setHeader("content-disposition", `${disposition}; filename="${compiled.filename}"`);
+  res.setHeader("cache-control", "no-store");
+  res.setHeader("x-latex-compiler", compiled.compiler);
+  res.setHeader("x-pdf-latex-hash", compiled.latexHash || "");
+  res.setHeader("x-pdf-page-count", String(compiled.pageCount || 1));
+  res.setHeader("x-pdf-cached", String(Boolean(compiled.cached)));
+  res.setHeader(
+    "access-control-expose-headers",
+    "content-disposition,x-request-id,x-latex-compiler,x-pdf-latex-hash,x-pdf-page-count,x-pdf-cached",
+  );
+}
+
 export async function getProjects(req, res, next) {
   try {
     res.json({ ok: true, data: { projects: await listProjects(req.user._id) } });
@@ -75,9 +89,7 @@ export async function getProjectPdf(req, res, next) {
       requestId: req.id,
     });
 
-    res.setHeader("content-type", "application/pdf");
-    res.setHeader("content-disposition", `attachment; filename="${compiled.filename}"`);
-    res.setHeader("x-latex-compiler", compiled.compiler);
+    setPdfHeaders(res, compiled, { disposition: "attachment" });
     res.send(compiled.pdf);
   } catch (error) {
     next(error);
@@ -92,9 +104,7 @@ export async function getProjectPreviewPdf(req, res, next) {
       requestId: req.id,
     });
 
-    res.setHeader("content-type", "application/pdf");
-    res.setHeader("content-disposition", `inline; filename="${compiled.filename}"`);
-    res.setHeader("x-latex-compiler", compiled.compiler);
+    setPdfHeaders(res, compiled, { disposition: "inline" });
     res.send(compiled.pdf);
   } catch (error) {
     next(error);
