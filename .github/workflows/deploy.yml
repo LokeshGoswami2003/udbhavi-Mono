@@ -1,0 +1,83 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to deploy
+        required: false
+        default: main
+
+concurrency:
+  group: deploy-ec2
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    name: Build & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install client deps
+        working-directory: client
+        run: npm install --no-audit --no-fund
+
+      - name: Lint client
+        working-directory: client
+        run: npm run lint --if-present
+
+      - name: Build client (sanity check)
+        working-directory: client
+        env:
+          VITE_API_URL: /api/v1
+          VITE_AUTH0_DOMAIN: placeholder
+          VITE_AUTH0_CLIENT_ID: placeholder
+          VITE_AUTH0_AUDIENCE: placeholder
+        run: npm run build
+
+      - name: Install server deps
+        working-directory: server
+        run: npm install --no-audit --no-fund
+
+  deploy:
+    name: Deploy
+    needs: ci
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run deploy script on server
+        env:
+          BRANCH: ${{ github.event.inputs.branch || 'main' }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 \
+              "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
+              "bash /var/www/apps/udbhavi/deploy.sh ${BRANCH}"
+
+      - name: Smoke test
+        run: |
+          set -e
+          echo "Waiting for API to be healthy..."
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if ssh -i ~/.ssh/id_ed25519 "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
+                 "curl -sf http://localhost:4000/api/v1/health >/dev/null"; then
+              echo "API healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API did not become healthy"
+          exit 1
