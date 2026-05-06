@@ -8,10 +8,14 @@ Build an AI-powered resume builder SaaS with:
 - Express backend
 - Auth0 authentication
 - MongoDB Atlas database
-- AWS Bedrock with Claude Sonnet 4.6 as the LLM
+- AWS Bedrock with MiniMax M2.5 as the LLM
 - LaTeX-based resume rendering
 - PDF preview/download
 - Free-tier MVP with rate limiting
+
+Current implementation note:
+
+The active `udbhavi Mono` generation flow uses a ResumeData-first contract. The backend deterministically extracts visible links, PDF annotation links, and DOCX hyperlink relationship links into `extraction.sourceLinks` before the LLM runs. MiniMax M2.5 on Bedrock receives the uploaded source document when available, fallback raw text, trusted `sourceLinks`, project context, and the `ResumeData` schema. It returns structured resume data, feedback, and next actions. The backend reconciles trusted source links into `ResumeData` after extraction/chat so hidden links are not left to model guessing; technology/library domains such as Socket.io are skills evidence, not personal website links. Small-talk chat messages are handled without patching or rerendering the resume. Every chat-edit call sends the original resume evidence, the current structured `ResumeData`, the latest user message, and the full stored conversation history, then returns assistant text plus safe JSON Patch-style operations. The backend validates and normalizes the data, renders final LaTeX from fixed templates, and compiles real PDF previews/downloads. The LLM must not generate or modify final LaTeX.
 
 Main philosophy:
 
@@ -51,7 +55,7 @@ Express Backend API
   |
   |-- Auth0 JWT Validation
   |-- MongoDB Atlas
-  |-- AWS Bedrock Claude Sonnet 4.6
+  |-- AWS Bedrock MiniMax M2.5
   |-- LaTeX Renderer
   |-- PDF Compiler
   |
@@ -66,7 +70,7 @@ Frontend: React + Vite + Tailwind
 Backend: Express + TypeScript + Mongoose
 Auth: Auth0
 Database: MongoDB Atlas
-LLM: AWS Bedrock Claude Sonnet 4.6
+LLM: AWS Bedrock MiniMax M2.5
 Resume Format: LaTeX
 PDF Compile: Tectonic or latexmk
 Storage MVP: MongoDB only
@@ -728,16 +732,15 @@ Generate body:
 ```txt
 GET  /api/v1/projects/:projectId/versions
 GET  /api/v1/projects/:projectId/versions/:versionId
-POST /api/v1/projects/:projectId/versions
-POST /api/v1/projects/:projectId/versions/:versionId/activate
+POST /api/v1/projects/:projectId/versions/:versionId/restore
 ```
 
 ## Preview and Download Routes
 
 ```txt
-GET /api/v1/projects/:projectId/preview.pdf?versionId=...
-GET /api/v1/projects/:projectId/download.pdf?versionId=...
-GET /api/v1/projects/:projectId/source.tex?versionId=...
+GET /api/v1/projects/:projectId/preview.pdf
+GET /api/v1/projects/:projectId/download.pdf
+GET /api/v1/projects/:projectId/source.tex
 ```
 
 ## AI Routes
@@ -860,25 +863,40 @@ const checkJwt = auth({
 });
 ```
 
+Current minimal user sync:
+
+```txt
+GET /api/v1/me
+Authorization: Bearer <access token>
+```
+
+The backend validates the access token, uses the token subject as the Auth0 identity key, extracts available basic profile claims from the verified token payload, creates or updates the local user, then returns the database user.
+
+For local Auth0 setup, add a Post Login Action that writes these namespaced custom claims into the API access token:
+
+```txt
+https://api.udbhavi.local/email
+https://api.udbhavi.local/name
+```
+
+See `docs/Auth0UserClaimsAction.md`.
+
 User sync middleware:
 
 ```ts
 async function syncUser(req, res, next) {
   const auth0Sub = req.auth.payload.sub;
+  const { name, email } = req.auth.payload;
 
   const user = await User.findOneAndUpdate(
     { auth0Sub },
     {
+      $set: {
+        name,
+        email
+      },
       $setOnInsert: {
-        auth0Sub,
-        plan: "free",
-        role: "user",
-        limits: {
-          maxProjects: 3,
-          dailyAiCalls: 20,
-          dailyUploads: 5,
-          dailyCompiles: 50
-        }
+        auth0Sub
       }
     },
     { upsert: true, new: true }
@@ -895,7 +913,7 @@ Do not store user passwords. Auth0 owns authentication.
 
 # 13. LLM Strategy
 
-Use Claude Sonnet 4.6 for:
+Use MiniMax M2.5 on Bedrock for:
 
 ```txt
 1. Extracting uploaded resume text into ResumeData JSON
@@ -904,7 +922,7 @@ Use Claude Sonnet 4.6 for:
 4. Turning chatbot instructions into JSON Patch operations
 ```
 
-Do not use Claude to directly create final LaTeX.
+Do not use the LLM to directly create final LaTeX.
 
 ## Resume Extraction Prompt
 
