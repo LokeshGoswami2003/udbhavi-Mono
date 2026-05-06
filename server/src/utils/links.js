@@ -46,7 +46,7 @@ function shouldPreserveQuery(hostname, pathname, search) {
     return false;
   }
 
-  if (/coursera\.org|credly\.com|udemy\.com/i.test(hostname)) {
+  if (/coursera\.org|credly\.com|udemy\.com|youtube\.com|youtu\.be/i.test(hostname)) {
     return true;
   }
 

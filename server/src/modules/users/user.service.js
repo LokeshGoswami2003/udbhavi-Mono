@@ -72,7 +72,7 @@ export async function syncAuthenticatedUser({ auth0Sub, claims }) {
       },
     },
     {
-      new: true,
+      returnDocument: "after",
       upsert: true,
       setDefaultsOnInsert: true,
     },

@@ -8,6 +8,8 @@ export const emptyResumeData = {
     website: '',
     linkedin: '',
     github: '',
+    portfolio: '',
+    links: [],
     summary: '',
   },
   skills: [],

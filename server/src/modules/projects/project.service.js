@@ -21,11 +21,12 @@ import { Project } from "./project.model.js";
 
 function toProjectResponse(project) {
   const ai = project.ai?.toObject ? project.ai.toObject() : project.ai;
+  const status = project.status === "failed" && ai?.latexSource ? "ready" : project.status;
 
   return {
     id: project.id,
     title: project.title,
-    status: project.status,
+    status,
     resumeId: project.resumeId,
     target: project.target,
     templateId: project.templateId,
@@ -33,6 +34,28 @@ function toProjectResponse(project) {
     activeVersionId: project.activeVersionId,
     updatedAt: project.updatedAt,
   };
+}
+
+function toPlainAi(ai) {
+  return ai?.toObject ? ai.toObject() : ai || {};
+}
+
+function clearPdfCache(ai) {
+  const nextAi = { ...toPlainAi(ai) };
+  delete nextAi.pdf;
+  return nextAi;
+}
+
+function withSafePdf(ai, pdf) {
+  const nextAi = { ...toPlainAi(ai) };
+
+  if (pdf?.fileId && pdf?.latexHash) {
+    nextAi.pdf = pdf;
+  } else {
+    delete nextAi.pdf;
+  }
+
+  return nextAi;
 }
 
 function notFound() {
@@ -145,7 +168,7 @@ async function compileAndStoreProjectPdf({ project, requestId, force = false }) 
   }
 
   const latexHash = getLatexHash(latexSource);
-  const cachedPdf = project.ai?.pdf;
+  const cachedPdf = toPlainAi(project.ai).pdf;
   const filename = getProjectPdfFilename(project);
 
   if (!force && cachedPdf?.fileId && cachedPdf.latexHash === latexHash) {
@@ -161,12 +184,19 @@ async function compileAndStoreProjectPdf({ project, requestId, force = false }) 
           latexHash,
         });
 
+        if (project.status !== "ready") {
+          project.status = "ready";
+          await project.save();
+        }
+
         return {
           pdf,
           filename,
           compiler: cachedPdf.compiler || "cached",
           pageCount: cachedPdf.pageCount,
           cached: true,
+          latexHash,
+          fileId: cachedPdf.fileId,
         };
       }
     } catch (error) {
@@ -198,16 +228,15 @@ async function compileAndStoreProjectPdf({ project, requestId, force = false }) 
     },
   });
 
-  project.ai = {
-    ...(project.ai?.toObject ? project.ai.toObject() : project.ai || {}),
-    pdf: {
+  const pdf = {
       fileId,
       latexHash,
       compiledAt: new Date(),
       compiler: compiled.compiler,
       pageCount,
-    },
-  };
+    };
+  project.ai = withSafePdf(project.ai, pdf);
+  project.status = "ready";
   await project.save();
 
   logger.info("project.pdf.cached", {
@@ -226,6 +255,81 @@ async function compileAndStoreProjectPdf({ project, requestId, force = false }) 
     compiler: compiled.compiler,
     pageCount,
     cached: false,
+    latexHash,
+    fileId,
+  };
+}
+
+async function createVersionAndCompileProject({ project, source, label, changeSummary, requestId }) {
+  const version = await createResumeVersion({
+    project,
+    source,
+    label,
+    changeSummary,
+    requestId,
+  });
+  project.activeVersionId = version._id;
+  await project.save();
+
+  try {
+    await compileAndStoreProjectPdf({ project, requestId, force: true });
+  } catch (error) {
+    const latestAi = clearPdfCache(project.ai);
+    project.status = "failed";
+    project.ai = {
+      ...latestAi,
+      providerError: {
+        code: error.code || "PDF_COMPILE_FAILED",
+        message: "The resume draft was created, but the PDF compiler could not build the preview.",
+      },
+      messages: [
+        ...(latestAi.messages || []),
+        {
+          role: "assistant",
+          content: "I created the resume draft, but the PDF compiler could not build the preview. Please retry after the compiler is available.",
+          metadata: {
+            didModifyResume: false,
+            changeSummary: [],
+            quickReplies: ["Retry preview", "Review resume data", "Try another template"],
+            errorCode: error.code || "PDF_COMPILE_FAILED",
+          },
+        },
+      ],
+    };
+    await project.save();
+
+    logger.warn("project.pdf.compile_failed_after_draft", {
+      requestId,
+      module: "projects",
+      projectId: project.id,
+      code: error.code || "PDF_COMPILE_FAILED",
+    });
+  }
+
+  return version;
+}
+
+function buildSourceResumeFallbackDraft({ resume, templateId, providerError }) {
+  const resumeData = reconcileResumeLinks({
+    resumeData: normalizeResumeData(resume.resumeData || {}),
+    sourceLinks: resume.extraction?.sourceLinks || [],
+  });
+  const latexSource = renderResumeLatex({ resumeData, templateId });
+
+  return {
+    provider: "source_resume",
+    providerError,
+    promptVersion: "source-resume-fallback-v1",
+    resumeData,
+    latexSource,
+    feedback: [
+      "Generated from the uploaded resume because the AI provider could not return a usable structured draft.",
+      "Your original sections and verified source links were preserved where available.",
+      "You can retry AI polish from chat after the provider is stable.",
+    ],
+    nextAction: "Review the generated PDF, then ask for one focused improvement or paste a job description.",
+    assistantMessage:
+      "I could not use the AI provider for the first polish pass, so I generated a clean draft directly from your uploaded resume data and preserved the links I could verify. The PDF is ready to review, and we can retry AI improvements from chat when the provider is stable.",
   };
 }
 
@@ -294,14 +398,12 @@ export async function selectTemplateAndGenerate({ userId, projectId, templateId,
     const latexSource = renderResumeLatex({ resumeData, templateId: template.id });
 
     project.status = "ready";
-    project.ai = {
+    project.ai = withSafePdf({
       provider: generated.provider,
       providerError: generated.providerError,
       promptVersion: generated.promptVersion,
       resumeData,
-      renderedHtml: undefined,
       latexSource,
-      pdf: undefined,
       feedback: generated.feedback,
       nextAction: generated.nextAction,
       messages: [
@@ -314,46 +416,74 @@ export async function selectTemplateAndGenerate({ userId, projectId, templateId,
           },
         },
       ],
-    };
+    });
 
     await project.save();
-    const version = await createResumeVersion({
+    await createVersionAndCompileProject({
       project,
       source: "initial_generation",
       label: "Initial draft",
       changeSummary: generated.feedback,
       requestId,
     });
-    project.activeVersionId = version._id;
-    await project.save();
-    await compileAndStoreProjectPdf({ project, requestId, force: true });
     return toProjectResponse(project);
   } catch (error) {
-    project.status = "failed";
-    project.ai = {
-      ...(project.ai || {}),
-      provider: "bedrock",
-      providerError: error.providerError || {
-        code: error.code || "LLM_GENERATION_FAILED",
-        message: error.message,
-      },
+    const providerError = error.providerError || {
+      code: error.code || "LLM_GENERATION_FAILED",
+      message: error.message,
+    };
+    const fallback = buildSourceResumeFallbackDraft({ resume, templateId: template.id, providerError });
+
+    project.status = "ready";
+    project.ai = withSafePdf({
+      ...clearPdfCache(project.ai),
+      provider: fallback.provider,
+      providerError,
+      promptVersion: fallback.promptVersion,
+      resumeData: fallback.resumeData,
+      latexSource: fallback.latexSource,
+      feedback: fallback.feedback,
+      nextAction: fallback.nextAction,
       messages: [
-        ...(project.ai?.messages || []),
+        ...(toPlainAi(project.ai).messages || []),
         {
           role: "assistant",
-          content: "I could not generate this draft because the AI provider is unavailable. Please retry after the provider is ready.",
+          content: fallback.assistantMessage,
+          metadata: {
+            didModifyResume: true,
+            changeSummary: fallback.feedback,
+            quickReplies: ["Review PDF", "Improve wording", "Fix links"],
+            providerFallback: true,
+            errorCode: providerError.code,
+          },
         },
       ],
-    };
+    });
     await project.save();
-    throw error;
+    await createVersionAndCompileProject({
+      project,
+      source: "initial_generation",
+      label: "Source resume draft",
+      changeSummary: fallback.feedback,
+      requestId,
+    });
+
+    logger.warn("project.template_generation.ai_fallback", {
+      requestId,
+      module: "projects",
+      projectId: project.id,
+      resumeId: String(project.resumeId),
+      code: providerError.code,
+    });
+
+    return toProjectResponse(project);
   }
 }
 
 export async function addProjectMessage({ userId, projectId, message, requestId }) {
   const project = await getProjectForUser({ userId, projectId });
   if (isLightConversationMessage(message)) {
-    const aiState = project.ai?.toObject ? project.ai.toObject() : project.ai || {};
+    const aiState = toPlainAi(project.ai);
     const assistantMessage = getLightConversationReply(message);
 
     project.ai = {
@@ -392,8 +522,8 @@ export async function addProjectMessage({ userId, projectId, message, requestId 
   }
 
   const resume = await getLatestResumeContextForProject({ userId, project, requestId, event: "chat_edit" });
-  const aiState = project.ai?.toObject ? project.ai.toObject() : project.ai || {};
-  const currentResumeData = normalizeResumeData(aiState.resumeData || {});
+  const aiState = toPlainAi(project.ai);
+  const currentResumeData = normalizeResumeData(aiState.resumeData || resume.resumeData || {});
   const storedMessages = aiState.messages || [];
 
   logger.info("project.chat.context.loaded", {
@@ -406,11 +536,103 @@ export async function addProjectMessage({ userId, projectId, message, requestId 
     hasFallbackRawText: Boolean(resume.extraction?.rawText),
   });
 
-  const generated = await continueResumeChat({
-    project: { ...project.toObject(), ai: { ...aiState, resumeData: currentResumeData, messages: storedMessages } },
-    resume,
-    message,
-  });
+  let generated;
+
+  try {
+    generated = await continueResumeChat({
+      project: { ...project.toObject(), ai: { ...aiState, resumeData: currentResumeData, messages: storedMessages } },
+      resume,
+      message,
+    });
+  } catch (error) {
+    const providerError = error.providerError || {
+      code: error.code || "LLM_CHAT_FAILED",
+      message: error.message,
+    };
+
+    if (!aiState.latexSource && project.templateId) {
+      const fallback = buildSourceResumeFallbackDraft({ resume, templateId: project.templateId, providerError });
+      project.status = "ready";
+      project.ai = withSafePdf({
+        ...clearPdfCache(aiState),
+        provider: fallback.provider,
+        providerError,
+        promptVersion: fallback.promptVersion,
+        resumeData: fallback.resumeData,
+        latexSource: fallback.latexSource,
+        feedback: fallback.feedback,
+        nextAction: fallback.nextAction,
+        messages: [
+          ...storedMessages,
+          { role: "user", content: message },
+          {
+            role: "assistant",
+            content: fallback.assistantMessage,
+            metadata: {
+              didModifyResume: true,
+              changeSummary: fallback.feedback,
+              quickReplies: ["Review PDF", "Improve wording", "Fix links"],
+              providerFallback: true,
+              errorCode: providerError.code,
+            },
+          },
+        ],
+      });
+      await project.save();
+      await createVersionAndCompileProject({
+        project,
+        source: "chat_edit",
+        label: "Recovered source resume draft",
+        changeSummary: fallback.feedback,
+        requestId,
+      });
+
+      logger.warn("project.chat.ai_fallback", {
+        requestId,
+        module: "projects",
+        projectId: project.id,
+        resumeId: String(project.resumeId),
+        code: providerError.code,
+      });
+
+      return toProjectResponse(project);
+    }
+
+    project.status = aiState.latexSource ? "ready" : "failed";
+    project.ai = withSafePdf({
+      ...aiState,
+      provider: "bedrock",
+      providerError,
+      messages: [
+        ...storedMessages,
+        { role: "user", content: message },
+        {
+          role: "assistant",
+          content: "I could not update the draft because the AI provider is unavailable right now. Your current resume is unchanged, and you can retry once the provider is ready.",
+          metadata: {
+            didModifyResume: false,
+            changeSummary: [],
+            suggestions: [],
+            questions: [],
+            quickReplies: ["Retry this change", "Check project links", "Improve wording"],
+            safetyNotes: ["Resume data was left unchanged after provider failure."],
+            errorCode: providerError.code,
+          },
+        },
+      ],
+    }, aiState.pdf);
+    await project.save();
+
+    logger.warn("project.chat.provider.failed", {
+      requestId,
+      module: "projects",
+      projectId: project.id,
+      resumeId: String(project.resumeId),
+      code: providerError.code,
+    });
+
+    return toProjectResponse(project);
+  }
   let didApplyGeneratedPatch = generated.didModifyResume;
   let patchedResumeData = currentResumeData;
 
@@ -445,6 +667,8 @@ export async function addProjectMessage({ userId, projectId, message, requestId 
   });
   const didResumeChange = didApplyGeneratedPatch || JSON.stringify(nextResumeData) !== JSON.stringify(currentResumeData);
   const latexSource = renderResumeLatex({ resumeData: nextResumeData, templateId: project.templateId });
+  const latexHash = getLatexHash(latexSource);
+  const shouldCompilePdf = didResumeChange || !aiState.pdf?.fileId || aiState.pdf?.latexHash !== latexHash;
   const metadata = {
     intent: generated.intent,
     didModifyResume: didResumeChange,
@@ -456,23 +680,23 @@ export async function addProjectMessage({ userId, projectId, message, requestId 
     evidenceChecked: generated.evidenceChecked,
   };
 
-  project.ai = {
-    ...(project.ai || {}),
+  const nextAiBase = didResumeChange ? clearPdfCache(project.ai) : withSafePdf(project.ai, aiState.pdf);
+  project.status = shouldCompilePdf ? "processing" : "ready";
+  project.ai = withSafePdf({
+    ...nextAiBase,
     provider: generated.provider,
     providerError: generated.providerError,
     promptVersion: generated.promptVersion,
     resumeData: nextResumeData,
-    renderedHtml: undefined,
     latexSource,
-    pdf: didResumeChange ? undefined : project.ai?.pdf,
     feedback: generated.suggestions || [],
     nextAction: getChatNextAction({ project, generated }),
     messages: [
-      ...(project.ai?.messages || []),
+      ...(aiState.messages || []),
       { role: "user", content: message },
       { role: "assistant", content: generated.assistantMessage, metadata },
     ],
-  };
+  }, didResumeChange ? undefined : aiState.pdf);
 
   await project.save();
   if (didResumeChange) {
@@ -485,7 +709,43 @@ export async function addProjectMessage({ userId, projectId, message, requestId 
     });
     project.activeVersionId = version._id;
     await project.save();
-    await compileAndStoreProjectPdf({ project, requestId, force: true });
+  }
+
+  if (shouldCompilePdf) {
+    try {
+      await compileAndStoreProjectPdf({ project, requestId, force: true });
+    } catch (error) {
+      const latestAi = clearPdfCache(project.ai);
+      project.status = latestAi.latexSource ? "ready" : "failed";
+      project.ai = {
+        ...latestAi,
+        providerError: {
+          code: error.code || "PDF_COMPILE_FAILED",
+          message: "The resume update was saved, but the PDF preview could not be rebuilt yet.",
+        },
+        messages: [
+          ...(latestAi.messages || []),
+          {
+            role: "assistant",
+            content: "I saved the resume change, but the PDF preview could not be rebuilt yet. Please retry the preview or download in a moment.",
+            metadata: {
+              didModifyResume: false,
+              changeSummary: [],
+              quickReplies: ["Reload preview", "Fix links", "Improve wording"],
+              errorCode: error.code || "PDF_COMPILE_FAILED",
+            },
+          },
+        ],
+      };
+      await project.save();
+
+      logger.warn("project.chat.pdf_compile.failed", {
+        requestId,
+        module: "projects",
+        projectId: project.id,
+        code: error.code || "PDF_COMPILE_FAILED",
+      });
+    }
   }
 
   return toProjectResponse(project);
@@ -528,13 +788,11 @@ export async function restoreProjectVersion({ userId, projectId, versionId, requ
 
   project.status = "ready";
   project.ai = {
-    ...(project.ai?.toObject ? project.ai.toObject() : project.ai || {}),
+    ...clearPdfCache(project.ai),
     resumeData: version.resumeData,
-    renderedHtml: undefined,
     latexSource: version.latexSource,
-    pdf: undefined,
     messages: [
-      ...(project.ai?.messages || []),
+      ...(toPlainAi(project.ai).messages || []),
       {
         role: "assistant",
         content: `Restored version ${version.versionNumber}.`,

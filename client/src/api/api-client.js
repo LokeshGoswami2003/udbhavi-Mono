@@ -1,5 +1,28 @@
 const apiBaseUrl = import.meta.env.VITE_API_URL?.trim() ?? 'http://localhost:4000/api/v1'
 
+export class ApiError extends Error {
+  constructor(message, { code, status, requestId } = {}) {
+    super(message)
+    this.name = 'ApiError'
+    this.code = code
+    this.status = status
+    this.requestId = requestId
+  }
+}
+
+function buildErrorMessage(payload, response, fallback) {
+  const error = payload?.error || {}
+  const requestId = error.requestId || response.headers.get('x-request-id') || ''
+  const code = error.code || response.statusText || 'REQUEST_FAILED'
+  const base = error.message || fallback
+
+  if (import.meta.env.DEV && (code || requestId)) {
+    return `${base} (${[code, requestId ? `request ${requestId}` : ''].filter(Boolean).join(' · ')})`
+  }
+
+  return base
+}
+
 async function request(path, getApiToken, options = {}) {
   const token = await getApiToken()
   const headers = {
@@ -18,7 +41,12 @@ async function request(path, getApiToken, options = {}) {
   const payload = await response.json().catch(() => null)
 
   if (!response.ok || !payload?.ok) {
-    throw new Error(payload?.error?.message || 'The workspace could not complete that action. Please try again.')
+    const requestId = payload?.error?.requestId || response.headers.get('x-request-id') || ''
+    throw new ApiError(buildErrorMessage(payload, response, 'The workspace could not complete that action. Please try again.'), {
+      code: payload?.error?.code || response.statusText,
+      status: response.status,
+      requestId,
+    })
   }
 
   return payload.data
@@ -36,12 +64,24 @@ async function requestBlob(path, getApiToken, options = {}) {
 
   if (!response.ok) {
     const payload = await response.json().catch(() => null)
-    throw new Error(payload?.error?.message || 'The file could not be prepared. Please try again.')
+    const requestId = payload?.error?.requestId || response.headers.get('x-request-id') || ''
+    throw new ApiError(buildErrorMessage(payload, response, 'The file could not be prepared. Please try again.'), {
+      code: payload?.error?.code || response.statusText,
+      status: response.status,
+      requestId,
+    })
   }
 
   return {
     blob: await response.blob(),
     filename: response.headers.get('content-disposition')?.match(/filename="([^"]+)"/)?.[1] || 'resume.pdf',
+    headers: {
+      requestId: response.headers.get('x-request-id') || '',
+      latexHash: response.headers.get('x-pdf-latex-hash') || '',
+      pageCount: response.headers.get('x-pdf-page-count') || '',
+      compiler: response.headers.get('x-latex-compiler') || '',
+      cached: response.headers.get('x-pdf-cached') || '',
+    },
   }
 }
 
@@ -68,6 +108,10 @@ export async function createManualResume(getApiToken, resumeData) {
   ).resume
 }
 
+export async function fetchResume(getApiToken, resumeId) {
+  return (await request(`/resumes/${resumeId}`, getApiToken)).resume
+}
+
 export async function updateResume(getApiToken, resumeId, resumeData) {
   return (
     await request(`/resumes/${resumeId}`, getApiToken, {
@@ -83,6 +127,10 @@ export async function makeResumePrimary(getApiToken, resumeId) {
 
 export async function deleteResume(getApiToken, resumeId) {
   return request(`/resumes/${resumeId}`, getApiToken, { method: 'DELETE' })
+}
+
+export async function fetchResumeSourceFileBlob(getApiToken, resumeId) {
+  return requestBlob(`/resumes/${resumeId}/source-file`, getApiToken)
 }
 
 export async function createProject(getApiToken, project) {
@@ -117,7 +165,7 @@ export async function downloadProjectPdf(getApiToken, projectId) {
 }
 
 export async function fetchProjectPreviewPdfBlob(getApiToken, projectId) {
-  return (await requestBlob(`/projects/${projectId}/preview.pdf`, getApiToken)).blob
+  return requestBlob(`/projects/${projectId}/preview.pdf`, getApiToken)
 }
 
 export async function fetchProjectVersions(getApiToken, projectId) {

@@ -21,13 +21,64 @@ function parseJson(text) {
   const trimmed = String(text).replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
   const candidate = fenced || trimmed;
-  const jsonText = candidate.startsWith("{") ? candidate : candidate.match(/\{[\s\S]*\}/)?.[0];
+  const jsonText = extractJsonObject(candidate);
 
   if (!jsonText) {
     throw new Error("LLM response did not include JSON.");
   }
 
   return JSON.parse(jsonText);
+}
+
+function extractJsonObject(value = "") {
+  const text = String(value).trim();
+
+  if (text.startsWith("{") && text.endsWith("}")) {
+    return text;
+  }
+
+  const start = text.indexOf("{");
+  if (start === -1) {
+    return "";
+  }
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (char === "\"") {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) {
+      continue;
+    }
+
+    if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return text.slice(start, index + 1);
+      }
+    }
+  }
+
+  return "";
 }
 
 function getModelFamily() {

@@ -7,6 +7,8 @@ import {
   deleteProject,
   deleteResume,
   downloadProjectPdf,
+  fetchResume,
+  fetchResumeSourceFileBlob,
   fetchProjectPreviewPdfBlob,
   fetchWorkspaceContext,
   makeResumePrimary,
@@ -19,6 +21,7 @@ import { DashboardView } from './DashboardView'
 import { OnboardingFlow } from './OnboardingFlow'
 import { ProjectDialog } from './ProjectDialog'
 import { ProjectWorkspace } from './ProjectWorkspace'
+import { ResumeContextEditor } from './ResumeContextEditor'
 import { WorkspaceShell } from './WorkspaceShell'
 import { LoginRequired, WorkspaceError, WorkspaceLoading } from './WorkspaceStatus'
 
@@ -39,6 +42,7 @@ export function WorkspacePage() {
   const [activeProjectId, setActiveProjectId] = useState('')
   const [showResumes, setShowResumes] = useState(false)
   const [draftResume, setDraftResume] = useState(null)
+  const [reviewResume, setReviewResume] = useState(null)
   const [showProjectDialog, setShowProjectDialog] = useState(false)
   const [busy, setBusy] = useState(initialBusyState)
   const [actionError, setActionError] = useState('')
@@ -119,15 +123,29 @@ export function WorkspacePage() {
   }
 
   function handleSaveResume(resumeData) {
-    if (!draftResume) {
+    const targetResume = reviewResume || draftResume
+    if (!targetResume) {
       return
     }
 
     runAction('savingResume', async () => {
-      await updateResume(getApiToken, draftResume.id, resumeData)
+      const updated = await updateResume(getApiToken, targetResume.id, resumeData)
+      if (reviewResume) {
+        setReviewResume(updated)
+      }
       setDraftResume(null)
-      setShowResumes(false)
+      if (!reviewResume) {
+        setShowResumes(false)
+      }
       loadContext()
+    })
+  }
+
+  function handleOpenResume(resumeId) {
+    runAction('savingResume', async () => {
+      const resume = await fetchResume(getApiToken, resumeId)
+      setReviewResume(resume)
+      setShowResumes(false)
     })
   }
 
@@ -253,6 +271,11 @@ export function WorkspacePage() {
     [getApiToken],
   )
 
+  const handleResumeSourceFile = useCallback(
+    async (resumeId) => fetchResumeSourceFileBlob(getApiToken, resumeId),
+    [getApiToken],
+  )
+
   function handlePrimaryResume(resumeId) {
     runAction('savingResume', async () => {
       await makeResumePrimary(getApiToken, resumeId)
@@ -292,6 +315,7 @@ export function WorkspacePage() {
       onProjectSelect={(projectId) => {
         setActiveProjectId(projectId)
         setShowResumes(false)
+        setReviewResume(null)
       }}
       onNewProject={() => setShowProjectDialog(true)}
       onDeleteProject={handleDeleteProject}
@@ -304,7 +328,21 @@ export function WorkspacePage() {
         </p>
       ) : null}
 
-      {needsOnboarding ? (
+      {reviewResume ? (
+        <ResumeContextEditor
+          resume={reviewResume}
+          busy={busy.savingResume}
+          onBack={() => {
+            setReviewResume(null)
+            setShowResumes(true)
+          }}
+          onChange={(resumeData) => setReviewResume((resume) => ({ ...resume, resumeData }))}
+          onSave={handleSaveResume}
+          onMakePrimary={handlePrimaryResume}
+          onDelete={handleDeleteResume}
+          onLoadSourceFile={handleResumeSourceFile}
+        />
+      ) : needsOnboarding ? (
         <OnboardingFlow
           resume={draftResume}
           busy={busy.savingResume}
@@ -323,6 +361,7 @@ export function WorkspacePage() {
           onDeleteProject={handleDeleteProject}
           onPrimaryResume={handlePrimaryResume}
           onDeleteResume={handleDeleteResume}
+          onOpenResume={handleOpenResume}
         />
       ) : (
         <ProjectWorkspace

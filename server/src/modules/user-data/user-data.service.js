@@ -4,7 +4,7 @@ export async function getOrCreateUserData(userId) {
   return UserData.findOneAndUpdate(
     { userId },
     { $setOnInsert: { userId } },
-    { new: true, upsert: true, setDefaultsOnInsert: true },
+    { returnDocument: "after", upsert: true, setDefaultsOnInsert: true },
   );
 }
 
@@ -24,7 +24,7 @@ export async function setPrimaryResumeContext({ userId, resume }) {
       },
       $setOnInsert: { userId },
     },
-    { new: true, upsert: true, setDefaultsOnInsert: true },
+    { returnDocument: "after", upsert: true, setDefaultsOnInsert: true },
   );
 }
 
@@ -44,7 +44,7 @@ export async function completeOnboarding({ userId, resume }) {
         })),
       },
     },
-    { new: true },
+    { returnDocument: "after" },
   );
 }
 
@@ -62,6 +62,6 @@ export async function clearResumeContext(userId) {
         "onboarding.completedAt": "",
       },
     },
-    { new: true },
+    { returnDocument: "after" },
   );
 }

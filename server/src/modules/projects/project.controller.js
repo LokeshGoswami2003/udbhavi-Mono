@@ -13,6 +13,16 @@ import {
   updateProject,
 } from "./project.service.js";
 
+function setPdfHeaders(res, compiled, disposition) {
+  res.setHeader("content-type", "application/pdf");
+  res.setHeader("content-disposition", `${disposition}; filename="${compiled.filename}"`);
+  res.setHeader("cache-control", "no-store");
+  res.setHeader("x-latex-compiler", compiled.compiler || "unknown");
+  res.setHeader("x-pdf-latex-hash", compiled.latexHash || "");
+  res.setHeader("x-pdf-page-count", String(compiled.pageCount || 1));
+  res.setHeader("x-pdf-cached", String(Boolean(compiled.cached)));
+}
+
 export async function getProjects(req, res, next) {
   try {
     res.json({ ok: true, data: { projects: await listProjects(req.user._id) } });
@@ -75,9 +85,7 @@ export async function getProjectPdf(req, res, next) {
       requestId: req.id,
     });
 
-    res.setHeader("content-type", "application/pdf");
-    res.setHeader("content-disposition", `attachment; filename="${compiled.filename}"`);
-    res.setHeader("x-latex-compiler", compiled.compiler);
+    setPdfHeaders(res, compiled, "attachment");
     res.send(compiled.pdf);
   } catch (error) {
     next(error);
@@ -92,9 +100,7 @@ export async function getProjectPreviewPdf(req, res, next) {
       requestId: req.id,
     });
 
-    res.setHeader("content-type", "application/pdf");
-    res.setHeader("content-disposition", `inline; filename="${compiled.filename}"`);
-    res.setHeader("x-latex-compiler", compiled.compiler);
+    setPdfHeaders(res, compiled, "inline");
     res.send(compiled.pdf);
   } catch (error) {
     next(error);

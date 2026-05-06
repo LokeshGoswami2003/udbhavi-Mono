@@ -3,6 +3,7 @@ import multer from "multer";
 import {
   createManual,
   getResume,
+  getResumeSource,
   getResumes,
   makePrimary,
   patchResume,
@@ -19,6 +20,7 @@ const upload = multer({
 router.get("/resumes", getResumes);
 router.post("/resumes/upload", upload.single("file"), uploadResume);
 router.post("/resumes/manual", createManual);
+router.get("/resumes/:resumeId/source-file", getResumeSource);
 router.get("/resumes/:resumeId", getResume);
 router.patch("/resumes/:resumeId", patchResume);
 router.post("/resumes/:resumeId/primary", makePrimary);

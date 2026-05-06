@@ -29,8 +29,10 @@ function cleanEvidenceChecked(value) {
 export async function generateInitialResumeData({ project, resume, template }) {
   const prompt = buildInitialResumePrompt({ project, resume, template });
   const result = await callResumeExtractionJson({ prompt });
+  const directResumeData = result.basics || result.projects || result.experience || result.education ? result : undefined;
+  const resumeData = result.resumeData || result.data?.resumeData || directResumeData;
 
-  if (!result.resumeData || typeof result.resumeData !== "object") {
+  if (!resumeData || typeof resumeData !== "object") {
     const error = new Error("The AI could not extract structured resume data from this source.");
     error.statusCode = 422;
     error.code = "RESUME_DATA_EXTRACTION_INVALID";
@@ -41,7 +43,7 @@ export async function generateInitialResumeData({ project, resume, template }) {
     provider: result.providerUsed || getActiveProviderName(),
     providerError: result.providerError,
     promptVersion: "resume-data-extraction-v1",
-    resumeData: normalizeResumeData(result.resumeData),
+    resumeData: normalizeResumeData(resumeData),
     assistantMessage: result.assistantMessage || "Great — I reviewed your resume, extracted the key details, and prepared a clean structured draft. I also preserved the links I could verify from the uploaded file.",
     feedback: cleanList(result.feedback, 3).length
       ? cleanList(result.feedback, 3)

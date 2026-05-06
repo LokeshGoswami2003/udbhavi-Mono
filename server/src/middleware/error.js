@@ -30,6 +30,7 @@ export function errorMiddleware(err, req, res, _next) {
     error: {
       code,
       message: statusCode === 500 ? "Something went wrong." : err.message,
+      requestId: req.id,
     },
   });
 }

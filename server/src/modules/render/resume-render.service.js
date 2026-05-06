@@ -1,4 +1,5 @@
 import { getTemplate } from "../templates/template.service.js";
+import { normalizeUrl } from "../../utils/links.js";
 
 function esc(value = "") {
   return String(value)
@@ -39,6 +40,40 @@ function latexRawHref(url, rawLabel) {
   }
 
   return `\\href{${latexUrl(url)}}{${rawLabel || latexEsc(url)}}`;
+}
+
+function inferLinkLabel(url = "") {
+  const value = String(url).toLowerCase();
+  if (value.includes("github.com")) return "GitHub";
+  if (value.includes("youtube.com") || value.includes("youtu.be")) return "YouTube";
+  if (value.includes("snapshot") || value.includes("screenshot")) return "Snapshots";
+  if (value.includes("certificate") || value.includes("credential")) return "Certificate";
+  if (/(vercel\.app|netlify\.app|render\.com|firebaseapp\.com|live|demo)/i.test(value)) return "Live";
+  return "Link";
+}
+
+function projectLinks(project = {}) {
+  const links = Array.isArray(project.links) ? [...project.links] : [];
+  if (project.url && !links.some((link) => link.url === project.url)) {
+    links.unshift({ label: "Link", url: project.url });
+  }
+
+  const byUrl = new Map();
+  for (const link of links) {
+    const url = normalizeUrl(link?.url || link?.normalizedUrl);
+    if (!/^https?:\/\//i.test(url)) {
+      continue;
+    }
+    if (url && !byUrl.has(url)) {
+      byUrl.set(url, { url, label: link.label || inferLinkLabel(url) });
+    }
+  }
+
+  return [...byUrl.values()];
+}
+
+function renderLatexLinks(links = []) {
+  return links.map((link) => latexHref(link.url, link.label || inferLinkLabel(link.url))).join(" | ");
 }
 
 function section(title, body) {
@@ -83,13 +118,16 @@ function renderExperience(experience = []) {
 function renderProjects(projects = []) {
   return projects
     .slice(0, 3)
-    .map((item) => `
+    .map((item) => {
+      const links = projectLinks(item);
+      return `
       <div class="entry">
-        <div class="item-title"><strong>${esc(item.name)}</strong>${item.url ? `<span>${esc(item.url)}</span>` : ""}</div>
+        <div class="item-title"><strong>${esc(item.name)}</strong>${links.length ? `<span>${links.map((link) => esc(link.label)).join(" | ")}</span>` : ""}</div>
         ${item.description ? `<div class="muted">${esc(item.description)}</div>` : ""}
         ${list(item.bullets || [])}
       </div>
-    `)
+    `;
+    })
     .join("");
 }
 
@@ -333,11 +371,14 @@ export function renderResumeLatex({ resumeData, templateId }) {
 ${(item.bullets || []).slice(0, compact ? 4 : 5).map((bullet) => `    \\item ${latexEsc(bullet)}`).join("\n")}
 \\end{itemize}`;
   }).join("\n\n");
-  const projects = (data.projects || []).filter((item) => item.name || item.description || item.bullets?.length).slice(0, 3).map((item) => `
-\\item\\resumetitle{${latexEsc(item.name || "Project")}}${item.url ? ` \\hfill ${latexHref(item.url, "Link")}` : ""}
+  const projects = (data.projects || []).filter((item) => item.name || item.description || item.bullets?.length).slice(0, 3).map((item) => {
+    const links = renderLatexLinks(projectLinks(item));
+    return `
+\\item\\resumetitle{${latexEsc(item.name || "Project")}}${links ? ` \\hfill ${links}` : ""}
 \\begin{itemize}[leftmargin=*,${itemSpacing},parsep=0pt,partopsep=0pt]
 ${[item.description, ...(item.bullets || [])].filter(Boolean).slice(0, compact ? 3 : 5).map((bullet) => `    \\item ${latexEsc(bullet)}`).join("\n")}
-\\end{itemize}`).join("\n");
+\\end{itemize}`;
+  }).join("\n");
   const education = (data.education || [])
     .filter((item) => item.degree || item.institution)
     .slice(0, 3)
