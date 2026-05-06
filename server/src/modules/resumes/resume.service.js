@@ -1,15 +1,23 @@
 import { logger } from "../../utils/logger.js";
+import mongoose from "mongoose";
 import { sha256 } from "../../utils/hash.js";
 import { clearResumeContext, completeOnboarding, setPrimaryResumeContext } from "../user-data/user-data.service.js";
 import { normalizeResumeData } from "./resume-data.js";
 import { extractResume } from "./resume-extract.service.js";
-import { deleteResumeFile, saveResumeFile } from "./resume-storage.service.js";
+import { deleteResumeFile, readResumeFile, saveResumeFile } from "./resume-storage.service.js";
 import { Resume } from "./resume.model.js";
 
 function notFound() {
   const error = new Error("Resume not found.");
   error.statusCode = 404;
   error.code = "RESUME_NOT_FOUND";
+  return error;
+}
+
+function invalidResumeId() {
+  const error = new Error("Resume id is invalid.");
+  error.statusCode = 400;
+  error.code = "RESUME_ID_INVALID";
   return error;
 }
 
@@ -54,6 +62,10 @@ export async function listResumes(userId) {
 }
 
 export async function getResumeForUser({ userId, resumeId }) {
+  if (!mongoose.isValidObjectId(resumeId)) {
+    throw invalidResumeId();
+  }
+
   const resume = await Resume.findOne({ _id: resumeId, userId, deletedAt: null });
 
   if (!resume) {
@@ -61,6 +73,11 @@ export async function getResumeForUser({ userId, resumeId }) {
   }
 
   return resume;
+}
+
+export async function getResumeDetails({ userId, resumeId }) {
+  const resume = await getResumeForUser({ userId, resumeId });
+  return toResumeResponse(resume, { includeRawText: true });
 }
 
 export async function getLatestResumeForUser(userId) {
@@ -71,6 +88,25 @@ export async function getLatestResumeForUser(userId) {
   }
 
   return resume;
+}
+
+export async function getResumeSourceFile({ userId, resumeId }) {
+  const resume = await getResumeForUser({ userId, resumeId });
+
+  if (!resume.file?.fileId) {
+    const error = new Error("This resume does not have an uploaded source file.");
+    error.statusCode = 404;
+    error.code = "RESUME_SOURCE_FILE_NOT_FOUND";
+    throw error;
+  }
+
+  const file = await readResumeFile(resume.file.fileId);
+
+  return {
+    file,
+    filename: resume.file.originalName || `${resume.label || "resume"}.pdf`,
+    mimeType: resume.file.mimeType || "application/octet-stream",
+  };
 }
 
 export async function createUploadedResume({ userId, file, requestId }) {

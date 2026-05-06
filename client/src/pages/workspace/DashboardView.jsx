@@ -1,7 +1,7 @@
-import { FileText, Plus, Trash2 } from 'lucide-react'
+import { FileText, Link2, Plus, Trash2 } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 
-export function DashboardView({ view, resumes, projects, onCreateProject, onDeleteProject, onPrimaryResume, onDeleteResume }) {
+export function DashboardView({ view, resumes, projects, onCreateProject, onDeleteProject, onPrimaryResume, onDeleteResume, onOpenResume }) {
   const primaryResume = resumes.find((resume) => resume.isPrimary)
   const showResumes = view === 'dashboard' || view === 'resumes'
   const showProjects = view === 'dashboard' || view === 'projects'
@@ -43,6 +43,14 @@ export function DashboardView({ view, resumes, projects, onCreateProject, onDele
                   {resume.isPrimary ? <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-black text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200">Primary</span> : null}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
+                  <Button as="button" type="button" variant="secondary" className="min-h-9 px-3 py-2 text-xs" onClick={() => onOpenResume(resume.id)}>
+                    <FileText size={15} aria-hidden="true" />
+                    View / Edit
+                  </Button>
+                  <Button as="button" type="button" variant="ghost" className="min-h-9 px-3 py-2 text-xs" onClick={() => onOpenResume(resume.id)}>
+                    <Link2 size={15} aria-hidden="true" />
+                    Review links
+                  </Button>
                   {!resume.isPrimary ? (
                     <Button as="button" type="button" variant="secondary" className="min-h-9 px-3 py-2 text-xs" onClick={() => onPrimaryResume(resume.id)}>
                       Make primary

@@ -2,14 +2,14 @@ import {
   ArrowRight,
   Bot,
   CheckCircle2,
-  FileText,
   Loader2,
   Printer,
   SendHorizontal,
   Sparkles,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { Button } from '../../components/ui/Button'
+import { PdfViewer } from './components/PdfViewer'
 
 const templates = [
   {
@@ -132,57 +132,6 @@ const previewContent = {
   },
 }
 
-function templatePreviewHtml(template) {
-  const compact = template.id === 'modern-compact'
-  const content = previewContent[template.id]
-  const itemSpacing = compact ? '0' : '2px'
-  const sectionSpacing = compact ? '5px 0 4px' : '8px 0 8px'
-  const renderBullets = (bullets) => `<ul>${bullets.map((bullet) => `<li>${bullet}</li>`).join('')}</ul>`
-  const renderEntry = (item) => `
-    <div class="entry">
-      <div class="head"><span>${item.name || item.role}</span><span>${item.links || item.dates || ''}</span></div>
-      ${item.meta ? `<p>${item.meta}</p>` : ''}
-      ${renderBullets(item.bullets)}
-    </div>`
-
-  return `<!doctype html>
-<html>
-<head>
-<meta charset="utf-8" />
-<style>
-  body { margin: 0; background: #f8fafc; color: #111827; }
-  .page { width: 8.5in; min-height: 11in; padding: .58in; box-sizing: border-box; background: white; font-family: Arial, Helvetica, sans-serif; font-size: ${compact ? '10px' : '10.4px'}; line-height: ${compact ? '1.28' : '1.32'}; }
-  h1 { margin: 0; text-align: center; font-size: 23px; letter-spacing: 0; }
-  .contact { margin: 4px 0 0; text-align: center; color: #475569; }
-  h2 { margin: ${sectionSpacing}; border-bottom: 1px solid ${template.accent}; color: ${template.accent}; font-size: 12px; letter-spacing: 0; text-transform: uppercase; }
-  p { margin: 0 0 4px; }
-  .head { display: flex; justify-content: space-between; gap: 12px; font-weight: 700; }
-  ul { margin: 3px 0 0 15px; padding: 0; }
-  li { margin: ${itemSpacing} 0; }
-  .entry { margin: 0 0 ${compact ? '4px' : '7px'}; }
-  .summary::before { content: "• "; }
-</style>
-</head>
-<body>
-  <article class="page">
-    <h1>Lokesh Goswami</h1>
-    <p class="contact">lokesh.goswami.2003@gmail.com · +917017095682 · ${content.location} · LinkedIn · GitHub · LeetCode</p>
-    <h2>Summary</h2>
-    <p class="summary">${content.summary}</p>
-    <h2>Technical Skills</h2>
-    <ul>${content.skills.map(([label, value]) => `<li><strong>${label}:</strong> ${value}</li>`).join('')}</ul>
-    ${content.experience.length ? `<h2>Experience</h2>${content.experience.map(renderEntry).join('')}` : ''}
-    <h2>Projects</h2>
-    ${content.projects.map(renderEntry).join('')}
-    <h2>Education</h2>
-    <ul><li><strong>B.Tech in Computer Science and Engineering</strong> GLA University, Mathura <span style="float:right">2024</span></li><li><strong>Senior Secondary (Class 12)</strong> Saraswati Vidya Mandir, Kosi Kalan <span style="float:right">2020</span></li></ul>
-    <h2>Achievements & Certifications</h2>
-    <ul><li>Solved <strong>200+ DSA problems</strong> on LeetCode and completed DSA from <strong>Coding Ninjas</strong> <span style="float:right">Certificate</span></li><li>Built multiple full-stack MERN projects and completed the <strong>CodingShuttle Full-Stack Development Course</strong> <span style="float:right">Certificate</span></li></ul>
-  </article>
-</body>
-</html>`
-}
-
 export function ProjectWorkspace({ project, busy, onSelectTemplate, onSendMessage, onDownloadPdf, onLoadPreviewPdf }) {
   if (!project) {
     return (
@@ -218,15 +167,7 @@ export function ProjectWorkspace({ project, busy, onSelectTemplate, onSendMessag
                 className="flex min-h-0 flex-col rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition hover:border-blue-400 dark:border-white/10 dark:bg-slate-900"
               >
                 <div className="grid min-h-0 flex-1 place-items-center overflow-hidden rounded-md bg-slate-100 p-2 dark:bg-slate-950">
-                  <div className="relative aspect-[8.5/11] h-[min(56dvh,620px)] max-h-full overflow-hidden bg-white shadow-sm">
-                    <iframe
-                      title={`${template.name} template preview`}
-                      srcDoc={templatePreviewHtml(template)}
-                      className="pointer-events-none absolute left-0 top-0 h-[1056px] w-[816px] origin-top-left scale-[0.42] border-0 bg-white"
-                      tabIndex={-1}
-                      scrolling="no"
-                    />
-                  </div>
+                  <TemplateThumbnail template={template} />
                 </div>
                 <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
@@ -264,7 +205,7 @@ export function ProjectWorkspace({ project, busy, onSelectTemplate, onSendMessag
       </header>
 
       <div className="grid min-h-0 lg:grid-cols-[minmax(0,1fr)_minmax(420px,32vw)] xl:grid-cols-[minmax(0,1fr)_500px]">
-        <PdfPreview project={project} busy={busy} onLoadPreviewPdf={onLoadPreviewPdf} />
+        <PdfPreview project={project} busy={busy} onLoadPreviewPdf={onLoadPreviewPdf} onSelectTemplate={onSelectTemplate} />
 
         <ChatPanel project={project} busy={busy} onSendMessage={onSendMessage} />
       </div>
@@ -290,113 +231,101 @@ function PreviewActions({ project, busy, onDownloadPdf }) {
   )
 }
 
-function PdfPreview({ project, busy, onLoadPreviewPdf }) {
-  const [pdfUrl, setPdfUrl] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
-  const pdfUrlRef = useRef('')
-  const compiledAt = project.ai?.pdf?.compiledAt || ''
+function PdfPreview({ project, busy, onLoadPreviewPdf, onSelectTemplate }) {
   const hasLatexSource = Boolean(project.ai?.latexSource)
-  const previewStatus = busy.selectingTemplate || busy.sendingMessage || project.status === 'processing'
+  const reloadKey = [
+    project.id,
+    project.activeVersionId,
+    project.ai?.pdf?.latexHash,
+    project.ai?.pdf?.compiledAt,
+    project.updatedAt,
+  ].filter(Boolean).join(':')
+  const compiledAt = project.ai?.pdf?.compiledAt || ''
+  const canLoadPreview = Boolean(project?.id && hasLatexSource)
+  const previewStatus = project.status === 'failed' && !canLoadPreview
+    ? 'Preview unavailable'
+    : busy.selectingTemplate || busy.sendingMessage || project.status === 'processing'
     ? 'Updating resume...'
-    : loading || busy.loadingPreview
+    : busy.loadingPreview
       ? 'Compiling PDF...'
-      : pdfUrl
+      : compiledAt
         ? 'Preview ready'
         : 'Building resume...'
 
-  useEffect(() => {
-    let isActive = true
-
-    async function loadPdf() {
-      if (!project?.id || project.status !== 'ready' || !hasLatexSource) {
-        if (pdfUrlRef.current) {
-          URL.revokeObjectURL(pdfUrlRef.current)
-          pdfUrlRef.current = ''
-        }
-        setPdfUrl('')
-        setError('')
-        return
-      }
-
-      setLoading(true)
-      setError('')
-
-      try {
-        const blob = await onLoadPreviewPdf(project.id)
-        const objectUrl = URL.createObjectURL(blob)
-
-        if (isActive) {
-          if (pdfUrlRef.current) {
-            URL.revokeObjectURL(pdfUrlRef.current)
-          }
-          pdfUrlRef.current = objectUrl
-          setPdfUrl(objectUrl)
-        } else {
-          URL.revokeObjectURL(objectUrl)
-        }
-      } catch (loadError) {
-        if (isActive) {
-          setPdfUrl('')
-          setError(loadError.message || 'Could not load the PDF preview.')
-        }
-      } finally {
-        if (isActive) {
-          setLoading(false)
-        }
-      }
-    }
-
-    loadPdf()
-
-    return () => {
-      isActive = false
-    }
-  }, [compiledAt, hasLatexSource, onLoadPreviewPdf, project?.activeVersionId, project?.id, project?.status])
-
-  useEffect(() => () => {
-    if (pdfUrlRef.current) {
-      URL.revokeObjectURL(pdfUrlRef.current)
-    }
-  }, [])
+  if (project.status === 'failed' && !canLoadPreview && project.templateId) {
+    return (
+      <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-[#111827]">
+        <div className="flex min-h-12 items-center justify-between gap-3 border-b border-white/10 bg-[#293241] px-4">
+          <p className="truncate text-sm font-black text-white">PDF preview · Recovery needed</p>
+          <span className="rounded-md bg-red-500/15 px-2 py-1 text-[11px] font-black uppercase text-red-100">Failed</span>
+        </div>
+        <div className="grid min-h-0 place-items-center bg-[#1f2937] p-6">
+          <div className="max-w-md rounded-lg border border-red-400/30 bg-slate-950 p-5 text-center text-sm font-bold text-slate-100">
+            <p>The AI draft failed before a PDF was created.</p>
+            <p className="mt-2 text-xs leading-5 text-slate-400">Regenerate will use the selected template and fall back to your extracted resume data if the AI provider fails again.</p>
+            <button
+              type="button"
+              onClick={() => onSelectTemplate(project.id, project.templateId)}
+              disabled={busy.selectingTemplate}
+              className="mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-white px-4 text-xs font-black text-slate-950 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {busy.selectingTemplate ? <Loader2 className="animate-spin" size={15} aria-hidden="true" /> : null}
+              Regenerate resume
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-[#111827]">
-      <div className="flex min-h-12 items-center justify-between gap-3 border-b border-white/10 bg-[#293241] px-4">
-        <div className="flex items-center gap-2 text-sm font-black text-white">
-          <FileText size={17} className="text-blue-200" aria-hidden="true" />
-          PDF preview
-        </div>
-        <span className="rounded-md bg-white/10 px-2 py-1 text-[11px] font-black uppercase text-slate-200">
-          {previewStatus}
-        </span>
-      </div>
+    <PdfViewer
+      title={`PDF preview · ${previewStatus}`}
+      loadPdf={() => {
+        if (!canLoadPreview) {
+          return Promise.reject(new Error(project.status === 'failed' ? 'This draft failed before a PDF was available.' : 'Resume PDF is not ready yet.'))
+        }
+        return onLoadPreviewPdf(project.id)
+      }}
+      reloadKey={reloadKey}
+      busyLabel={previewStatus}
+      className="min-h-0"
+    />
+  )
+}
 
-      <div className="min-h-0 bg-[#1f2937] p-4">
-        <div className="h-full overflow-hidden rounded-sm bg-white shadow-[0_18px_50px_rgba(0,0,0,0.45)]">
-          {pdfUrl ? (
-            <div className="relative h-full">
-              <iframe title="Resume PDF preview" src={pdfUrl} className="h-full w-full border-0 bg-white" />
-              {loading || busy.loadingPreview || busy.sendingMessage || busy.selectingTemplate ? (
-                <div className="absolute right-3 top-3 flex items-center gap-2 rounded-md bg-slate-950/80 px-3 py-2 text-xs font-bold text-white shadow-lg">
-                  <Loader2 className="animate-spin" size={14} aria-hidden="true" />
-                  {previewStatus}
-                </div>
-              ) : null}
+function TemplateThumbnail({ template }) {
+  const content = previewContent[template.id]
+  const compact = template.id === 'modern-compact'
+
+  return (
+    <div className="aspect-[8.5/11] h-[min(56dvh,620px)] max-h-full overflow-hidden rounded-sm bg-white p-5 text-slate-950 shadow-sm">
+      <div className="text-center">
+        <div className="mx-auto h-3 w-32 rounded-sm bg-slate-950" />
+        <div className="mx-auto mt-2 h-1.5 w-56 rounded-sm bg-blue-100" />
+      </div>
+      <div className="mt-5 grid gap-2">
+        {['Summary', 'Technical Skills', ...(compact ? ['Experience'] : []), 'Projects', 'Education', 'Achievements'].map((section, index) => (
+          <div key={section}>
+            <div className="mb-1 flex items-center gap-2">
+              <div className="h-px flex-1 bg-slate-950" />
+              <span className="text-[9px] font-black uppercase tracking-normal text-slate-700">{section}</span>
+              <div className="h-px flex-1 bg-slate-950" />
             </div>
-          ) : (
-            <div className="grid h-full place-items-center bg-slate-950 p-8 text-center text-sm font-bold text-slate-200">
-              {error ? (
-                <div className="max-w-md rounded-lg border border-red-400/30 bg-red-500/10 p-4 text-red-100">{error}</div>
-              ) : (
-                <div>
-                  <Loader2 className="mx-auto mb-3 animate-spin text-blue-300" size={22} aria-hidden="true" />
-                  <p>{previewStatus}</p>
-                </div>
-              )}
+            <div className="grid gap-1">
+              {Array.from({ length: index === 3 ? 4 : 2 }).map((_, lineIndex) => (
+                <div
+                  key={lineIndex}
+                  className="h-1.5 rounded-sm bg-slate-200"
+                  style={{ width: `${lineIndex % 2 ? 72 : 92}%` }}
+                />
+              ))}
             </div>
-          )}
-        </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 rounded-sm bg-blue-50 p-2 text-[9px] font-bold leading-4 text-blue-900">
+        {(content?.projects || []).slice(0, 3).map((project) => project.links).join(' · ')}
       </div>
     </div>
   )

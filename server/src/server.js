@@ -10,6 +10,21 @@ async function startServer() {
   const app = createApp();
   const server = createServer(app);
 
+  server.on("error", async (error) => {
+    if (error.code === "EADDRINUSE") {
+      logger.error("API server port is already in use", {
+        port: env.port,
+        url: `http://localhost:${env.port}`,
+        hint: "Stop the existing process on this port before starting another API server.",
+      });
+    } else {
+      logger.error("API server failed", { error });
+    }
+
+    await disconnectDatabase();
+    process.exit(1);
+  });
+
   server.listen(env.port, () => {
     logger.info("API server listening", {
       url: `http://localhost:${env.port}`,

@@ -2,7 +2,8 @@ import {
   createManualResume,
   createUploadedResume,
   deleteResume,
-  getResumeForUser,
+  getResumeDetails,
+  getResumeSourceFile,
   listResumes,
   setPrimaryResume,
   updateResume,
@@ -41,8 +42,21 @@ export async function createManual(req, res, next) {
 
 export async function getResume(req, res, next) {
   try {
-    const resume = await getResumeForUser({ userId: req.user._id, resumeId: req.params.resumeId });
+    const resume = await getResumeDetails({ userId: req.user._id, resumeId: req.params.resumeId });
     res.json({ ok: true, data: { resume } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getResumeSource(req, res, next) {
+  try {
+    const source = await getResumeSourceFile({ userId: req.user._id, resumeId: req.params.resumeId });
+
+    res.setHeader("content-type", source.mimeType);
+    res.setHeader("content-disposition", `inline; filename="${source.filename}"`);
+    res.setHeader("cache-control", "no-store");
+    res.send(source.file);
   } catch (error) {
     next(error);
   }
