@@ -1,6 +1,9 @@
 import { logger } from "../../utils/logger.js";
-import { generateInitialResume, continueResumeChat } from "../ai/resume-generation.service.js";
-import { renderResumeHtml, renderResumeLatex } from "../render/resume-render.service.js";
+import { generateInitialResumeData, continueResumeChat } from "../ai/resume-generation.service.js";
+import { compileLatexToPdf } from "../render/latex-compile.service.js";
+import { renderResumeLatex } from "../render/resume-render.service.js";
+import { normalizeResumeData } from "../resumes/resume-data.js";
+import { applyResumePatchOps } from "../resumes/resume-patch.service.js";
 import { getResumeForUser } from "../resumes/resume.service.js";
 import { readResumeFile } from "../resumes/resume-storage.service.js";
 import { getTemplate } from "../templates/template.service.js";
@@ -58,6 +61,7 @@ async function withSourceDocument(resume) {
     ...resume.toObject(),
     sourceDocument: {
       format,
+      mimeType: resume.file.mimeType,
       bytes,
     },
   };
@@ -120,26 +124,30 @@ export async function selectTemplateAndGenerate({ userId, projectId, templateId 
   await project.save();
 
   try {
-    const generated = await generateInitialResume({ project: { ...project.toObject(), templateId: template.id }, resume, template });
-    const renderedHtml = renderResumeHtml({ resumeData: generated.resumeData, templateId: template.id });
-    const latexSource = renderResumeLatex({ resumeData: generated.resumeData, templateId: template.id });
+    const generated = await generateInitialResumeData({ project: { ...project.toObject(), templateId: template.id }, resume, template });
+    const resumeData = normalizeResumeData(generated.resumeData);
+    const latexSource = renderResumeLatex({ resumeData, templateId: template.id });
 
     project.status = "ready";
     project.ai = {
       provider: generated.provider,
       providerError: generated.providerError,
       promptVersion: generated.promptVersion,
-      resumeData: generated.resumeData,
-      renderedHtml,
+      resumeData,
+      renderedHtml: undefined,
       latexSource,
       feedback: generated.feedback,
-    nextAction: generated.nextAction,
-    messages: [
-      {
-        role: "assistant",
-        content: generated.assistantMessage || generated.nextAction,
-      },
-    ],
+      nextAction: generated.nextAction,
+      messages: [
+        {
+          role: "assistant",
+          content: generated.assistantMessage || generated.nextAction,
+          metadata: {
+            suggestions: generated.feedback,
+            quickReplies: ["Make it more concise", "Improve my bullets", "Target a job description"],
+          },
+        },
+      ],
     };
 
     await project.save();
@@ -168,30 +176,77 @@ export async function selectTemplateAndGenerate({ userId, projectId, templateId 
 
 export async function addProjectMessage({ userId, projectId, message }) {
   const project = await getProjectForUser({ userId, projectId });
-  const template = getTemplate(project.templateId);
-  const generated = await continueResumeChat({ project, message, template });
-  const renderedHtml = renderResumeHtml({ resumeData: generated.resumeData, templateId: project.templateId });
-  const latexSource = renderResumeLatex({ resumeData: generated.resumeData, templateId: project.templateId });
+  const currentResumeData = normalizeResumeData(project.ai?.resumeData || {});
+  const generated = await continueResumeChat({ project: { ...project.toObject(), ai: { ...(project.ai || {}), resumeData: currentResumeData } }, message });
+  const nextResumeData = generated.didModifyResume ? applyResumePatchOps(currentResumeData, generated.patchOps) : currentResumeData;
+  const latexSource = renderResumeLatex({ resumeData: nextResumeData, templateId: project.templateId });
+  const metadata = {
+    intent: generated.intent,
+    changeSummary: generated.changeSummary,
+    suggestions: generated.suggestions,
+    questions: generated.questions,
+    quickReplies: generated.quickReplies,
+    safetyNotes: generated.safetyNotes,
+  };
 
   project.ai = {
     ...(project.ai || {}),
     provider: generated.provider,
     providerError: generated.providerError,
     promptVersion: generated.promptVersion,
-    resumeData: generated.resumeData || project.ai?.resumeData,
-    renderedHtml,
+    resumeData: nextResumeData,
+    renderedHtml: undefined,
     latexSource,
-    feedback: generated.feedback,
-    nextAction: generated.nextAction,
+    feedback: generated.suggestions || [],
+    nextAction: generated.quickReplies?.[0] || generated.questions?.[0] || "",
     messages: [
       ...(project.ai?.messages || []),
       { role: "user", content: message },
-      { role: "assistant", content: generated.assistantMessage },
+      { role: "assistant", content: generated.assistantMessage, metadata },
     ],
   };
 
   await project.save();
   return toProjectResponse(project);
+}
+
+export async function compileProjectPdf({ userId, projectId, requestId }) {
+  const project = await getProjectForUser({ userId, projectId });
+  const latexSource = project.ai?.latexSource;
+
+  if (!latexSource) {
+    const error = new Error("Resume is not ready for preview.");
+    error.statusCode = 400;
+    error.code = "RESUME_PREVIEW_NOT_READY";
+    throw error;
+  }
+
+  const compiled = await compileLatexToPdf({
+    latexSource,
+    projectId: project.id,
+    requestId,
+  });
+
+  return {
+    ...compiled,
+    filename: `${project.title.trim().replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase() || "resume"}.pdf`,
+  };
+}
+
+export async function getProjectLatexSource({ userId, projectId }) {
+  const project = await getProjectForUser({ userId, projectId });
+
+  if (!project.ai?.latexSource) {
+    const error = new Error("Resume source is not ready yet.");
+    error.statusCode = 400;
+    error.code = "RESUME_PREVIEW_NOT_READY";
+    throw error;
+  }
+
+  return {
+    latexSource: project.ai.latexSource,
+    filename: `${project.title.trim().replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase() || "resume"}.tex`,
+  };
 }
 
 export async function updateProject({ userId, projectId, body }) {

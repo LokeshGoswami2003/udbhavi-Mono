@@ -28,6 +28,7 @@ const projectSchema = new mongoose.Schema(
         {
           role: { type: String, enum: ["user", "assistant"], required: true },
           content: { type: String, required: true },
+          metadata: mongoose.Schema.Types.Mixed,
           createdAt: { type: Date, default: Date.now },
         },
       ],

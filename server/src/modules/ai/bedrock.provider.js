@@ -18,8 +18,10 @@ function getClient() {
 }
 
 function parseJson(text) {
-  const trimmed = text.trim();
-  const jsonText = trimmed.startsWith("{") ? trimmed : trimmed.match(/\{[\s\S]*\}/)?.[0];
+  const trimmed = String(text).replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
+  const candidate = fenced || trimmed;
+  const jsonText = candidate.startsWith("{") ? candidate : candidate.match(/\{[\s\S]*\}/)?.[0];
 
   if (!jsonText) {
     throw new Error("LLM response did not include JSON.");
@@ -29,6 +31,10 @@ function parseJson(text) {
 }
 
 function getModelFamily() {
+  if (env.bedrockModelId.includes("minimax")) {
+    return "minimax";
+  }
+
   if (env.bedrockModelId.includes("nova")) {
     return "nova";
   }
@@ -40,7 +46,7 @@ function getModelFamily() {
   return "unknown";
 }
 
-function toNovaContentBlocks({ user, documents = [] }) {
+function toConverseContentBlocks({ user, documents = [] }) {
   return [
     { text: JSON.stringify(user) },
     ...documents.map((document, index) => ({
@@ -55,7 +61,7 @@ function toNovaContentBlocks({ user, documents = [] }) {
   ];
 }
 
-async function callNovaJson({ system, user, documents }) {
+async function callConverseJson({ system, user, documents, temperature = 0.2 }) {
   const response = await getClient().send(
     new ConverseCommand({
       modelId: env.bedrockModelId,
@@ -63,12 +69,12 @@ async function callNovaJson({ system, user, documents }) {
       messages: [
         {
           role: "user",
-          content: toNovaContentBlocks({ user, documents }),
+          content: toConverseContentBlocks({ user, documents }),
         },
       ],
       inferenceConfig: {
         maxTokens: env.bedrockMaxTokens,
-        temperature: 0.2,
+        temperature,
       },
     }),
   );
@@ -77,11 +83,11 @@ async function callNovaJson({ system, user, documents }) {
   return parseJson(text);
 }
 
-async function callAnthropicJson({ system, user }) {
+async function callAnthropicJson({ system, user, temperature = 0.2 }) {
   const body = {
     anthropic_version: "bedrock-2023-05-31",
     max_tokens: env.bedrockMaxTokens,
-    temperature: 0.2,
+    temperature,
     system,
     messages: [
       {
@@ -105,10 +111,20 @@ async function callAnthropicJson({ system, user }) {
   return parseJson(text);
 }
 
-export async function callBedrockJson({ system, user, documents = [] }) {
-  if (getModelFamily() === "nova") {
-    return callNovaJson({ system, user, documents });
+export async function callBedrockJson({ system, user, documents = [], temperature = 0.2 }) {
+  if (["minimax", "nova"].includes(getModelFamily())) {
+    try {
+      return await callConverseJson({ system, user, documents, temperature });
+    } catch (error) {
+      const documentRejected = documents.length && error.name === "ValidationException" && /document|content/i.test(error.message || "");
+
+      if (!documentRejected) {
+        throw error;
+      }
+
+      return callConverseJson({ system, user, documents: [], temperature });
+    }
   }
 
-  return callAnthropicJson({ system, user });
+  return callAnthropicJson({ system, user, temperature });
 }

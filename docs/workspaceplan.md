@@ -10,7 +10,7 @@ Auth is now considered complete enough for the next product phase. The next goal
 
 - A user completes onboarding once by uploading a resume or entering details manually.
 - The backend stores the user's resume profile and raw resume files in MongoDB.
-- Resume text, links, and structured resume data are extracted and saved for reuse.
+- Uploaded resume files are stored for LLM generation; local text/link extraction is a fallback only and is not shown as candidate truth.
 - Projects are created after onboarding and reuse the user's saved resume context.
 - A user should not upload a resume again for every project.
 - AI workflow, JD optimization, ATS scoring, and PDF rendering can continue later.
@@ -47,10 +47,9 @@ Landing
   -> backend /me syncs local user
   -> workspace checks onboarding state
   -> if no resume context:
-       onboarding
+         onboarding
          -> upload resume OR enter details manually
-         -> extract and store resume data
-         -> review/edit extracted details
+         -> store uploaded resume OR review manually entered details
          -> mark onboarding complete
   -> dashboard
   -> create project
@@ -97,9 +96,11 @@ Template selection starts the generation pipeline:
 
 ```txt
 Choose template
-  -> backend builds prompt from project + resume context + template rules
-  -> provider returns resume draft + feedback questions
-  -> UI shows live resume preview and interactive feedback chat
+  -> backend builds prompt from project + saved resume source document/raw text
+  -> provider returns structured ResumeData + feedback questions
+  -> backend validates ResumeData and renders LaTeX from the selected template
+  -> backend compiles PDF for preview/download
+  -> UI shows the compiled PDF preview and interactive feedback chat
 ```
 
 The implementation uses a Bedrock provider interface:
@@ -107,7 +108,7 @@ The implementation uses a Bedrock provider interface:
 ```txt
 LLM_PROVIDER=bedrock
   -> AWS Bedrock JSON call using backend env vars
-  -> Amazon Nova models use the Converse API
+  -> MiniMax M2.5 uses the Bedrock Converse API
 ```
 
 The prompt pipeline is already shaped for Bedrock. The app should only run real Bedrock calls after the backend environment is intentionally configured and the user is comfortable sending resume context to AWS.
@@ -117,13 +118,14 @@ Current Bedrock status:
 ```txt
 LLM_PROVIDER=bedrock is wired.
 AWS bearer-token env is supported.
-Nova Pro is configured with `BEDROCK_MODEL_ID=us.amazon.nova-pro-v1:0`.
-Nova models use the Bedrock Converse API.
+MiniMax M2.5 is configured with `BEDROCK_MODEL_ID=minimax.minimax-m2.5`.
+MiniMax M2.5 uses the Bedrock Converse API.
 Run npm run smoke:bedrock from server/ to verify readiness.
-The app-path smoke works with Nova Pro after the model switch.
 Treat the app's Bedrock API key as the source of truth; the local AWS CLI may be configured for a different account.
 Mock AI responses are removed from the runtime path; provider failures now return clear API errors.
-Uploaded PDF/DOCX files are sent directly to Nova during generation when available, with parser output used only as backup context.
+Uploaded PDF/DOCX files are sent directly to MiniMax M2.5 through Bedrock during generation when available, with local parser text used only as backup context.
+The current generation contract is ResumeData-first: the LLM receives the uploaded source document when available, fallback raw text/links, project context, and schema instructions, then returns structured `ResumeData`, feedback, and next actions. The backend owns final LaTeX rendering, PDF compilation, preview, and download.
+Chat edits use the full stored conversation and current `ResumeData`, but the LLM may only return assistant text, suggestions/questions/quick replies, and safe JSON Patch-style operations against the resume schema.
 ```
 
 ## Preview Rendering Direction
@@ -134,24 +136,21 @@ The preview should feel closer to Overleaf than a markdown editor:
 Project selected
   -> center panel shows a document page
   -> right panel shows AI feedback/chat
-  -> backend stores ResumeData, rendered HTML, and LaTeX source
+  -> backend stores ResumeData, rendered LaTeX source, feedback, and chat context
 ```
 
 Current implementation:
 
 - Two templates only: `classic-ats` and `modern-compact`.
 - Template selection cards render live document-style previews instead of skeleton placeholders.
-- The selected template's LaTeX sample is sent in the prompt as the formatting contract.
-- Server generates escaped LaTeX source.
-- Server generates an Overleaf-like HTML page preview from the same resume data.
-- Existing old projects can rebuild their preview through the current renderer.
+- The selected template stays on the backend as the formatting contract.
+- Server stores `project.ai.resumeData` as the project draft source of truth.
+- Server renders `project.ai.latexSource` from fixed backend templates and compiles it into a real PDF through the no-Docker Node Tectonic compiler path.
+- Client loads `/projects/:projectId/preview.pdf` with an Authorization header and previews the returned PDF blob.
+- Chat edits send the full stored conversation and current `ResumeData` so MiniMax can ask follow-up questions and return structured patch operations.
 - The workspace shell is viewport-bound; sidebar, preview, and chat scroll independently.
 - Chat shows pending user input and AI activity while the Bedrock request is running.
-
-Pending for true compiled preview:
-
-- Install/configure `tectonic`, `latexmk`, or `pdflatex` on the local/server runtime.
-- Add preview/download endpoints that compile the stored LaTeX source.
+- The regex LaTeX-to-HTML renderer is legacy fallback only and is not used for the main product preview.
 
 ## Workspace UX Model
 
@@ -167,12 +166,12 @@ Recommended steps:
 2. Resume Source
    - Upload resume: PDF/DOCX.
    - Enter manually.
-3. Extracting
-   - Show simple progress states: uploading, reading file, extracting details, ready for review.
+3. Uploading
+   - Show simple progress states: uploading, saving source, ready.
    - Do not show technical parser names or implementation notes.
 4. Review Details
-   - Editable profile sections: personal info, links, summary, skills, experience, education, projects, certifications.
-   - User can fix missing or incorrect extracted data.
+   - Manual entries can be reviewed before saving.
+   - Uploaded resumes should not show incomplete extracted fields as final candidate data.
 5. Done
    - User lands on dashboard and can create the first project.
 
@@ -216,8 +215,8 @@ User
 Resume
   stores raw file metadata
   stores raw file bytes in MongoDB/GridFS
-  stores extracted text and links
-  stores structured ResumeData
+  stores fallback extracted text and links
+  stores structured ResumeData only for manual entries or later confirmed profile edits
 
 Project
   references userId
@@ -448,9 +447,9 @@ Storage: MongoDB GridFS
 Do not log file contents, raw text, or extracted resume data
 ```
 
-## Extraction Strategy
+## Upload Context Strategy
 
-Use simple Express-side extraction first.
+Use simple Express-side text extraction only as a fallback for LLM context and link discovery. Do not present this fallback as complete extracted candidate information.
 
 Recommended packages:
 
@@ -469,11 +468,11 @@ Upload file
   -> validate type and size
   -> hash file
   -> save raw file to GridFS
-  -> extract raw text
+  -> extract fallback raw text
   -> extract URLs from raw text
-  -> create preliminary ResumeData
+  -> keep ResumeData empty until manually entered or explicitly confirmed
   -> save resume document
-  -> return review-ready state
+  -> return saved source state
 ```
 
 For the first phase, URL extraction can be text-based:

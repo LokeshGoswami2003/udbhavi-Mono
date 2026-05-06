@@ -1,8 +1,10 @@
 import {
   addProjectMessage,
+  compileProjectPdf,
   createProject,
   deleteProject,
   getProjectForUser,
+  getProjectLatexSource,
   listProjects,
   selectTemplateAndGenerate,
   updateProject,
@@ -55,6 +57,55 @@ export async function postProjectMessage(req, res, next) {
       message: req.body.message,
     });
     res.json({ ok: true, data: { project } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getProjectPdf(req, res, next) {
+  try {
+    const compiled = await compileProjectPdf({
+      userId: req.user._id,
+      projectId: req.params.projectId,
+      requestId: req.id,
+    });
+
+    res.setHeader("content-type", "application/pdf");
+    res.setHeader("content-disposition", `attachment; filename="${compiled.filename}"`);
+    res.setHeader("x-latex-compiler", compiled.compiler);
+    res.send(compiled.pdf);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getProjectPreviewPdf(req, res, next) {
+  try {
+    const compiled = await compileProjectPdf({
+      userId: req.user._id,
+      projectId: req.params.projectId,
+      requestId: req.id,
+    });
+
+    res.setHeader("content-type", "application/pdf");
+    res.setHeader("content-disposition", `inline; filename="${compiled.filename}"`);
+    res.setHeader("x-latex-compiler", compiled.compiler);
+    res.send(compiled.pdf);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getProjectSourceTex(req, res, next) {
+  try {
+    const source = await getProjectLatexSource({
+      userId: req.user._id,
+      projectId: req.params.projectId,
+    });
+
+    res.setHeader("content-type", "application/x-tex; charset=utf-8");
+    res.setHeader("content-disposition", `attachment; filename="${source.filename}"`);
+    res.send(source.latexSource);
   } catch (error) {
     next(error);
   }

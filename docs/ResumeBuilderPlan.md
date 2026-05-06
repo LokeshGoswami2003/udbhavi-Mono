@@ -8,10 +8,14 @@ Build an AI-powered resume builder SaaS with:
 - Express backend
 - Auth0 authentication
 - MongoDB Atlas database
-- AWS Bedrock with Claude Sonnet 4.6 as the LLM
+- AWS Bedrock with MiniMax M2.5 as the LLM
 - LaTeX-based resume rendering
 - PDF preview/download
 - Free-tier MVP with rate limiting
+
+Current implementation note:
+
+The active `udbhavi Mono` generation flow uses a ResumeData-first contract. MiniMax M2.5 on Bedrock receives the uploaded source document when available, fallback raw text/links, project context, and the `ResumeData` schema. It returns structured resume data, feedback, and next actions. Chat edits return assistant text plus safe JSON Patch-style operations. The backend validates and normalizes the data, renders final LaTeX from fixed templates, and compiles real PDF previews/downloads. The LLM must not generate or modify final LaTeX.
 
 Main philosophy:
 
@@ -51,7 +55,7 @@ Express Backend API
   |
   |-- Auth0 JWT Validation
   |-- MongoDB Atlas
-  |-- AWS Bedrock Claude Sonnet 4.6
+  |-- AWS Bedrock MiniMax M2.5
   |-- LaTeX Renderer
   |-- PDF Compiler
   |
@@ -66,7 +70,7 @@ Frontend: React + Vite + Tailwind
 Backend: Express + TypeScript + Mongoose
 Auth: Auth0
 Database: MongoDB Atlas
-LLM: AWS Bedrock Claude Sonnet 4.6
+LLM: AWS Bedrock MiniMax M2.5
 Resume Format: LaTeX
 PDF Compile: Tectonic or latexmk
 Storage MVP: MongoDB only
@@ -910,7 +914,7 @@ Do not store user passwords. Auth0 owns authentication.
 
 # 13. LLM Strategy
 
-Use Claude Sonnet 4.6 for:
+Use MiniMax M2.5 on Bedrock for:
 
 ```txt
 1. Extracting uploaded resume text into ResumeData JSON
@@ -919,7 +923,7 @@ Use Claude Sonnet 4.6 for:
 4. Turning chatbot instructions into JSON Patch operations
 ```
 
-Do not use Claude to directly create final LaTeX.
+Do not use the LLM to directly create final LaTeX.
 
 ## Resume Extraction Prompt
 

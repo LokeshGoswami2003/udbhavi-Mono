@@ -21,7 +21,9 @@ export const env = {
   awsBearerTokenBedrock: process.env.AWS_BEARER_TOKEN_BEDROCK,
   awsAccessKeyId: process.env.AWS_ACCESS_KEY_ID,
   awsSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  bedrockModelId: process.env.BEDROCK_MODEL_ID ?? "us.amazon.nova-pro-v1:0",
-  bedrockMaxTokens: Number(process.env.BEDROCK_MAX_TOKENS ?? 2200),
+  bedrockModelId: process.env.BEDROCK_MODEL_ID ?? "minimax.minimax-m2.5",
+  bedrockMaxTokens: Number(process.env.BEDROCK_MAX_TOKENS ?? 8000),
   llmProvider: process.env.LLM_PROVIDER ?? "bedrock",
+  latexCompiler: process.env.LATEX_COMPILER ?? "auto",
+  latexCompileTimeoutMs: Number(process.env.LATEX_COMPILE_TIMEOUT_MS ?? 60000),
 };

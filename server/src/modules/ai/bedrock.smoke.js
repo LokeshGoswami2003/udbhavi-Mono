@@ -1,13 +1,14 @@
-import { callResumeJson } from "./llm.service.js";
+import { callResumeExtractionJson } from "./llm.service.js";
 
 try {
-  const result = await callResumeJson({
+  const result = await callResumeExtractionJson({
     prompt: {
-      system: "Return structured JSON only.",
+      system: "Return one valid JSON object only. Do not wrap it in markdown.",
       user: {
         task: "Return a minimal JSON object confirming the Bedrock smoke call.",
         outputShape: {
           resumeData: {},
+          assistantMessage: "string",
           feedback: [],
           nextAction: "string",
         },

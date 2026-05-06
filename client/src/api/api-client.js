@@ -24,6 +24,27 @@ async function request(path, getApiToken, options = {}) {
   return payload.data
 }
 
+async function requestBlob(path, getApiToken, options = {}) {
+  const token = await getApiToken()
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    ...options,
+    headers: {
+      authorization: `Bearer ${token}`,
+      ...options.headers,
+    },
+  })
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null)
+    throw new Error(payload?.error?.message || 'The file could not be prepared. Please try again.')
+  }
+
+  return {
+    blob: await response.blob(),
+    filename: response.headers.get('content-disposition')?.match(/filename="([^"]+)"/)?.[1] || 'resume.pdf',
+  }
+}
+
 export async function fetchCurrentUser(getApiToken) {
   return (await request('/me', getApiToken)).user
 }
@@ -89,6 +110,14 @@ export async function sendProjectMessage(getApiToken, projectId, message) {
       body: JSON.stringify({ message }),
     })
   ).project
+}
+
+export async function downloadProjectPdf(getApiToken, projectId) {
+  return requestBlob(`/projects/${projectId}/download.pdf`, getApiToken)
+}
+
+export async function fetchProjectPreviewPdfBlob(getApiToken, projectId) {
+  return (await requestBlob(`/projects/${projectId}/preview.pdf`, getApiToken)).blob
 }
 
 export async function deleteProject(getApiToken, projectId) {

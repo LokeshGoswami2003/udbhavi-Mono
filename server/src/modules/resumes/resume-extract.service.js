@@ -9,25 +9,6 @@ const docxMimeTypes = new Set([
   "application/msword",
 ]);
 
-function textToResumeData(text) {
-  const email = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || "";
-  const phone = text.match(/(?:\+?\d[\d\s().-]{8,}\d)/)?.[0]?.trim() || "";
-  const fullName = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find((line) => line && !line.includes("@") && !/^https?:\/\//i.test(line));
-
-  return {
-    ...emptyResumeData(),
-    basics: {
-      fullName: fullName || "",
-      email,
-      phone,
-      summary: text.slice(0, 700),
-    },
-  };
-}
-
 export function getParserName(mimeType) {
   if (pdfMimeTypes.has(mimeType)) {
     return "pdf-parse";
@@ -67,6 +48,6 @@ export async function extractResume(file) {
     parser,
     rawText: rawText.trim(),
     links: extractLinks(rawText),
-    resumeData: textToResumeData(rawText),
+    resumeData: emptyResumeData(),
   };
 }

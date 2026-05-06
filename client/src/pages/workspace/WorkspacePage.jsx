@@ -6,6 +6,8 @@ import {
   createProject,
   deleteProject,
   deleteResume,
+  downloadProjectPdf,
+  fetchProjectPreviewPdfBlob,
   fetchWorkspaceContext,
   makeResumePrimary,
   selectProjectTemplate,
@@ -95,8 +97,8 @@ export function WorkspacePage() {
     }
 
     runAction(async () => {
-      const resume = await uploadResume(getApiToken, file)
-      setDraftResume(resume)
+      await uploadResume(getApiToken, file)
+      setDraftResume(null)
       loadContext()
     })
   }
@@ -149,9 +151,37 @@ export function WorkspacePage() {
     })
   }
 
+  function updateProjectInState(projectId, updater) {
+    setState((current) => {
+      if (!current.data?.projects) {
+        return current
+      }
+
+      return {
+        ...current,
+        data: {
+          ...current.data,
+          projects: current.data.projects.map((project) => (project.id === projectId ? updater(project) : project)),
+        },
+      }
+    })
+  }
+
   function handleTemplateSelect(projectId, templateId) {
+    updateProjectInState(projectId, (project) => ({
+      ...project,
+      templateId,
+      status: 'processing',
+      ai: {
+        ...(project.ai || {}),
+        feedback: [],
+        messages: project.ai?.messages || [],
+      },
+    }))
+
     runAction(async () => {
-      await selectProjectTemplate(getApiToken, projectId, templateId)
+      const project = await selectProjectTemplate(getApiToken, projectId, templateId)
+      updateProjectInState(projectId, () => project)
       loadContext()
     })
   }
@@ -163,6 +193,25 @@ export function WorkspacePage() {
       loadContext()
     }).finally(() => setPendingChatMessage(''))
   }
+
+  function handleProjectPdf(projectId) {
+    runAction(async () => {
+      const { blob, filename } = await downloadProjectPdf(getApiToken, projectId)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+    })
+  }
+
+  const handleProjectPreviewPdf = useCallback(
+    (projectId) => fetchProjectPreviewPdfBlob(getApiToken, projectId),
+    [getApiToken],
+  )
 
   function handlePrimaryResume(resumeId) {
     runAction(async () => {
@@ -242,6 +291,8 @@ export function WorkspacePage() {
           pendingMessage={pendingChatMessage}
           onSelectTemplate={handleTemplateSelect}
           onSendMessage={handleProjectMessage}
+          onDownloadPdf={handleProjectPdf}
+          onLoadPreviewPdf={handleProjectPreviewPdf}
         />
       )}
 
