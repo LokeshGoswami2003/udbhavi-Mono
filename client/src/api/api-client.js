@@ -120,6 +120,18 @@ export async function fetchProjectPreviewPdfBlob(getApiToken, projectId) {
   return (await requestBlob(`/projects/${projectId}/preview.pdf`, getApiToken)).blob
 }
 
+export async function fetchProjectVersions(getApiToken, projectId) {
+  return (await request(`/projects/${projectId}/versions`, getApiToken)).versions
+}
+
+export async function fetchProjectVersion(getApiToken, projectId, versionId) {
+  return (await request(`/projects/${projectId}/versions/${versionId}`, getApiToken)).version
+}
+
+export async function restoreProjectVersion(getApiToken, projectId, versionId) {
+  return (await request(`/projects/${projectId}/versions/${versionId}/restore`, getApiToken, { method: 'POST' })).project
+}
+
 export async function deleteProject(getApiToken, projectId) {
   return request(`/projects/${projectId}`, getApiToken, { method: 'DELETE' })
 }

@@ -1,3 +1,5 @@
+import { normalizeUrl } from "../../utils/links.js";
+
 export function emptyResumeData() {
   return {
     basics: {
@@ -26,6 +28,11 @@ function toString(value) {
   return value == null ? "" : String(value).trim();
 }
 
+function toUrlString(value) {
+  const trimmed = toString(value);
+  return normalizeUrl(trimmed) || trimmed;
+}
+
 function stringArray(value) {
   return Array.isArray(value) ? value.map(toString).filter(Boolean) : [];
 }
@@ -42,10 +49,10 @@ export function normalizeResumeData(input = {}) {
     email: toString(basics.email),
     phone: toString(basics.phone),
     location: toString(basics.location),
-    website: toString(basics.website),
-    linkedin: toString(basics.linkedin),
-    github: toString(basics.github),
-    portfolio: toString(basics.portfolio),
+    website: toUrlString(basics.website),
+    linkedin: toUrlString(basics.linkedin),
+    github: toUrlString(basics.github),
+    portfolio: toUrlString(basics.portfolio),
     summary: toString(basics.summary),
   };
 
@@ -86,7 +93,7 @@ export function normalizeResumeData(input = {}) {
     ? input.projects.map((item = {}) => ({
         name: toString(item.name),
         description: toString(item.description),
-        url: toString(item.url),
+        url: toUrlString(item.url),
         bullets: stringArray(item.bullets),
         technologies: stringArray(item.technologies),
       })).filter((item) => item.name || item.description || item.bullets.length)
@@ -97,7 +104,7 @@ export function normalizeResumeData(input = {}) {
         name: toString(item.name),
         issuer: toString(item.issuer),
         date: toString(item.date),
-        url: toString(item.url),
+        url: toUrlString(item.url),
       })).filter((item) => item.name)
     : [];
 

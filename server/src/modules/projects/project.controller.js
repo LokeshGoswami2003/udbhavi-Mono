@@ -5,7 +5,10 @@ import {
   deleteProject,
   getProjectForUser,
   getProjectLatexSource,
+  getProjectVersionForUser,
+  getProjectVersions,
   listProjects,
+  restoreProjectVersion,
   selectTemplateAndGenerate,
   updateProject,
 } from "./project.service.js";
@@ -42,6 +45,7 @@ export async function postProjectTemplate(req, res, next) {
       userId: req.user._id,
       projectId: req.params.projectId,
       templateId: req.body.templateId,
+      requestId: req.id,
     });
     res.json({ ok: true, data: { project } });
   } catch (error) {
@@ -55,6 +59,7 @@ export async function postProjectMessage(req, res, next) {
       userId: req.user._id,
       projectId: req.params.projectId,
       message: req.body.message,
+      requestId: req.id,
     });
     res.json({ ok: true, data: { project } });
   } catch (error) {
@@ -114,6 +119,45 @@ export async function getProjectSourceTex(req, res, next) {
 export async function patchProject(req, res, next) {
   try {
     const project = await updateProject({ userId: req.user._id, projectId: req.params.projectId, body: req.body });
+    res.json({ ok: true, data: { project } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getProjectVersionList(req, res, next) {
+  try {
+    const versions = await getProjectVersions({
+      userId: req.user._id,
+      projectId: req.params.projectId,
+    });
+    res.json({ ok: true, data: { versions } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getProjectVersionDetail(req, res, next) {
+  try {
+    const version = await getProjectVersionForUser({
+      userId: req.user._id,
+      projectId: req.params.projectId,
+      versionId: req.params.versionId,
+    });
+    res.json({ ok: true, data: { version } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function postProjectVersionRestore(req, res, next) {
+  try {
+    const project = await restoreProjectVersion({
+      userId: req.user._id,
+      projectId: req.params.projectId,
+      versionId: req.params.versionId,
+      requestId: req.id,
+    });
     res.json({ ok: true, data: { project } });
   } catch (error) {
     next(error);

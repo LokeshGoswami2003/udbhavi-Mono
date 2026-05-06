@@ -25,16 +25,20 @@ This checklist is the current build order for completing the resume SaaS MVP wit
    - Done: Local env can enable `LLM_PROVIDER=bedrock`.
    - Done: `npm run smoke:bedrock` provides a sanitized Bedrock readiness check from `server/`.
    - Changed: Uploaded PDF/DOCX files are stored and sent directly to the Bedrock model during resume generation when available; local parsing is only a fallback source, not the displayed candidate profile.
-   - Changed: Initial generation and chat edits send the full project conversation as context.
+   - Done: Resume extraction stores trusted `sourceLinks` from visible text, PDF annotations, and DOCX hyperlink relationships, then reconciles those links into `ResumeData` after LLM extraction/chat.
+   - Changed: Chat/template requests now use the user's latest saved resume evidence and include saved extracted `ResumeData`, current project `ResumeData`, latest user message, and full project conversation as context.
 
 2. Resume generation versions
    - Done: Store generated structured `project.ai.resumeData` per project.
    - Done: Keep chat feedback messages with assistant metadata, suggestions, questions, and quick replies.
    - Done: Preserve factual-source constraints by forcing extraction/chat through structured JSON.
+   - Done: Meaningful generated resume changes now create `ResumeVersion` records and update `project.activeVersionId`.
+   - Done: Version list/detail/restore APIs are prepared for the later version history UI.
 
 3. Template rendering preview
    - Done: Backend renders deterministic LaTeX from validated `ResumeData` and fixed templates.
    - Done: Backend compiles the rendered LaTeX into a real PDF using the no-Docker Node Tectonic compiler path.
+   - Done: Rendered PDFs are cached in MongoDB GridFS by LaTeX hash, so preview/download reuse stored output when the resume source has not changed.
    - Done: Initial generation stores `ResumeData` as the source of truth and derives `latexSource` from backend templates.
    - Done: Chat edits return safe patch operations, update `ResumeData`, and rerender `latexSource`.
    - Done: Client preview loads `/projects/:projectId/preview.pdf` as an authenticated PDF blob instead of regex-converted HTML.
@@ -46,7 +50,10 @@ This checklist is the current build order for completing the resume SaaS MVP wit
    - Done: Template selection shows live document-style previews instead of skeleton cards.
    - Done: Main panel shows the generated resume result and AI chat.
    - Done: Chat shows pending user input and AI activity while a request is running.
+   - Done: Chat/template mutations use the updated project returned by the API instead of reloading the full workspace context.
+   - Done: Workspace busy state is split by action so chat, preview, download, and project creation do not block unrelated controls.
    - Done: AI feedback, assistant suggestions, questions, and quick replies are clickable chat prompts so the assistant can guide revisions.
+   - Changed: Chat prompt actions are compact so the message area keeps most of the panel height.
    - Done: Project creation asks only for a name.
 
 5. Account limits

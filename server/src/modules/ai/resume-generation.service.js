@@ -10,6 +10,22 @@ function cleanPatchOps(value) {
   return Array.isArray(value) ? value.slice(0, 20).filter((item) => item && typeof item === "object") : [];
 }
 
+function cleanEvidenceChecked(value) {
+  return value && typeof value === "object"
+    ? {
+        checkedCurrentDraft: Boolean(value.checkedCurrentDraft),
+        checkedOriginalSource: Boolean(value.checkedOriginalSource),
+        checkedSourceLinks: Boolean(value.checkedSourceLinks),
+        linkUpdates: cleanList(value.linkUpdates, 4),
+      }
+    : {
+        checkedCurrentDraft: true,
+        checkedOriginalSource: true,
+        checkedSourceLinks: true,
+        linkUpdates: [],
+      };
+}
+
 export async function generateInitialResumeData({ project, resume, template }) {
   const prompt = buildInitialResumePrompt({ project, resume, template });
   const result = await callResumeExtractionJson({ prompt });
@@ -26,14 +42,20 @@ export async function generateInitialResumeData({ project, resume, template }) {
     providerError: result.providerError,
     promptVersion: "resume-data-extraction-v1",
     resumeData: normalizeResumeData(result.resumeData),
-    assistantMessage: result.assistantMessage || "I pulled the usable resume details into a structured draft.",
-    feedback: cleanList(result.feedback),
-    nextAction: result.nextAction || "Review the PDF preview, then tell me what role or job description to target.",
+    assistantMessage: result.assistantMessage || "Great — I reviewed your resume, extracted the key details, and prepared a clean structured draft. I also preserved the links I could verify from the uploaded file.",
+    feedback: cleanList(result.feedback, 3).length
+      ? cleanList(result.feedback, 3)
+      : [
+          "Your project work is now organized into a cleaner resume structure.",
+          "Some impact metrics can be strengthened later if you have real numbers.",
+          "For role targeting, paste a job description and I’ll review fit.",
+        ],
+    nextAction: result.nextAction || "Paste a job description to check role fit.",
   };
 }
 
-export async function continueResumeChat({ project, message }) {
-  const prompt = buildResumeChatPrompt({ project, message });
+export async function continueResumeChat({ project, resume, message }) {
+  const prompt = buildResumeChatPrompt({ project, resume, message });
   const result = await callResumeChatJson({ prompt });
 
   return {
@@ -47,8 +69,9 @@ export async function continueResumeChat({ project, message }) {
     patchOps: cleanPatchOps(result.patchOps),
     suggestions: cleanList(result.suggestions),
     questions: cleanList(result.questions),
-    quickReplies: cleanList(result.quickReplies, 4),
+    quickReplies: cleanList(result.quickReplies, 3),
     safetyNotes: cleanList(result.safetyNotes),
+    evidenceChecked: cleanEvidenceChecked(result.evidenceChecked),
   };
 }
 

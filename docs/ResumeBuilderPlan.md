@@ -15,7 +15,7 @@ Build an AI-powered resume builder SaaS with:
 
 Current implementation note:
 
-The active `udbhavi Mono` generation flow uses a ResumeData-first contract. MiniMax M2.5 on Bedrock receives the uploaded source document when available, fallback raw text/links, project context, and the `ResumeData` schema. It returns structured resume data, feedback, and next actions. Chat edits return assistant text plus safe JSON Patch-style operations. The backend validates and normalizes the data, renders final LaTeX from fixed templates, and compiles real PDF previews/downloads. The LLM must not generate or modify final LaTeX.
+The active `udbhavi Mono` generation flow uses a ResumeData-first contract. The backend deterministically extracts visible links, PDF annotation links, and DOCX hyperlink relationship links into `extraction.sourceLinks` before the LLM runs. MiniMax M2.5 on Bedrock receives the uploaded source document when available, fallback raw text, trusted `sourceLinks`, project context, and the `ResumeData` schema. It returns structured resume data, feedback, and next actions. The backend reconciles trusted source links into `ResumeData` after extraction/chat so hidden links are not left to model guessing; technology/library domains such as Socket.io are skills evidence, not personal website links. Small-talk chat messages are handled without patching or rerendering the resume. Every chat-edit call sends the original resume evidence, the current structured `ResumeData`, the latest user message, and the full stored conversation history, then returns assistant text plus safe JSON Patch-style operations. The backend validates and normalizes the data, renders final LaTeX from fixed templates, and compiles real PDF previews/downloads. The LLM must not generate or modify final LaTeX.
 
 Main philosophy:
 
@@ -732,16 +732,15 @@ Generate body:
 ```txt
 GET  /api/v1/projects/:projectId/versions
 GET  /api/v1/projects/:projectId/versions/:versionId
-POST /api/v1/projects/:projectId/versions
-POST /api/v1/projects/:projectId/versions/:versionId/activate
+POST /api/v1/projects/:projectId/versions/:versionId/restore
 ```
 
 ## Preview and Download Routes
 
 ```txt
-GET /api/v1/projects/:projectId/preview.pdf?versionId=...
-GET /api/v1/projects/:projectId/download.pdf?versionId=...
-GET /api/v1/projects/:projectId/source.tex?versionId=...
+GET /api/v1/projects/:projectId/preview.pdf
+GET /api/v1/projects/:projectId/download.pdf
+GET /api/v1/projects/:projectId/source.tex
 ```
 
 ## AI Routes

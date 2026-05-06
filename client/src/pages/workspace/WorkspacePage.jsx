@@ -23,6 +23,14 @@ import { WorkspaceShell } from './WorkspaceShell'
 import { LoginRequired, WorkspaceError, WorkspaceLoading } from './WorkspaceStatus'
 
 const emptyList = []
+const initialBusyState = {
+  creatingProject: false,
+  selectingTemplate: false,
+  sendingMessage: false,
+  loadingPreview: false,
+  downloadingPdf: false,
+  savingResume: false,
+}
 
 export function WorkspacePage() {
   const { isAuthenticated, isLoading } = useAuth0()
@@ -32,9 +40,8 @@ export function WorkspacePage() {
   const [showResumes, setShowResumes] = useState(false)
   const [draftResume, setDraftResume] = useState(null)
   const [showProjectDialog, setShowProjectDialog] = useState(false)
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState(initialBusyState)
   const [actionError, setActionError] = useState('')
-  const [pendingChatMessage, setPendingChatMessage] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
 
   const loadContext = useCallback(() => {
@@ -75,8 +82,8 @@ export function WorkspacePage() {
   )
   const needsOnboarding = !resumes.length || draftResume
 
-  async function runAction(action) {
-    setBusy(true)
+  async function runAction(actionName, action) {
+    setBusy((current) => ({ ...current, [actionName]: true }))
     setActionError('')
 
     try {
@@ -84,7 +91,7 @@ export function WorkspacePage() {
     } catch (error) {
       setActionError(error.message)
     } finally {
-      setBusy(false)
+      setBusy((current) => ({ ...current, [actionName]: false }))
     }
   }
 
@@ -96,7 +103,7 @@ export function WorkspacePage() {
       return
     }
 
-    runAction(async () => {
+    runAction('savingResume', async () => {
       await uploadResume(getApiToken, file)
       setDraftResume(null)
       loadContext()
@@ -104,7 +111,7 @@ export function WorkspacePage() {
   }
 
   function handleManual(resumeData) {
-    runAction(async () => {
+    runAction('savingResume', async () => {
       const resume = await createManualResume(getApiToken, resumeData)
       setDraftResume(resume)
       loadContext()
@@ -116,7 +123,7 @@ export function WorkspacePage() {
       return
     }
 
-    runAction(async () => {
+    runAction('savingResume', async () => {
       await updateResume(getApiToken, draftResume.id, resumeData)
       setDraftResume(null)
       setShowResumes(false)
@@ -125,7 +132,7 @@ export function WorkspacePage() {
   }
 
   function handleCreateProject(project) {
-    runAction(async () => {
+    runAction('creatingProject', async () => {
       const created = await createProject(getApiToken, {
         ...project,
         primaryResumeId: primaryResume?.id,
@@ -133,7 +140,10 @@ export function WorkspacePage() {
       setActiveProjectId(created.id)
       setShowResumes(false)
       setShowProjectDialog(false)
-      loadContext()
+      setState((current) => ({
+        ...current,
+        data: current.data ? { ...current.data, projects: [created, ...(current.data.projects || [])] } : current.data,
+      }))
     })
   }
 
@@ -142,12 +152,17 @@ export function WorkspacePage() {
       return
     }
 
-    runAction(async () => {
+    runAction('creatingProject', async () => {
       await deleteProject(getApiToken, projectId)
       if (activeProjectId === projectId) {
         setActiveProjectId('')
       }
-      loadContext()
+      setState((current) => ({
+        ...current,
+        data: current.data
+          ? { ...current.data, projects: (current.data.projects || []).filter((project) => project.id !== projectId) }
+          : current.data,
+      }))
     })
   }
 
@@ -179,23 +194,40 @@ export function WorkspacePage() {
       },
     }))
 
-    runAction(async () => {
+    runAction('selectingTemplate', async () => {
       const project = await selectProjectTemplate(getApiToken, projectId, templateId)
       updateProjectInState(projectId, () => project)
-      loadContext()
     })
   }
 
   function handleProjectMessage(projectId, message) {
-    setPendingChatMessage(message)
-    runAction(async () => {
-      await sendProjectMessage(getApiToken, projectId, message)
-      loadContext()
-    }).finally(() => setPendingChatMessage(''))
+    if (busy.sendingMessage) {
+      return
+    }
+
+    const optimisticMessage = {
+      role: 'user',
+      content: message,
+      createdAt: new Date().toISOString(),
+      metadata: { optimistic: true },
+    }
+
+    updateProjectInState(projectId, (project) => ({
+      ...project,
+      ai: {
+        ...(project.ai || {}),
+        messages: [...(project.ai?.messages || []), optimisticMessage],
+      },
+    }))
+
+    runAction('sendingMessage', async () => {
+      const updatedProject = await sendProjectMessage(getApiToken, projectId, message)
+      updateProjectInState(projectId, () => updatedProject)
+    })
   }
 
   function handleProjectPdf(projectId) {
-    runAction(async () => {
+    runAction('downloadingPdf', async () => {
       const { blob, filename } = await downloadProjectPdf(getApiToken, projectId)
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
@@ -209,12 +241,20 @@ export function WorkspacePage() {
   }
 
   const handleProjectPreviewPdf = useCallback(
-    (projectId) => fetchProjectPreviewPdfBlob(getApiToken, projectId),
+    async (projectId) => {
+      setBusy((current) => ({ ...current, loadingPreview: true }))
+
+      try {
+        return await fetchProjectPreviewPdfBlob(getApiToken, projectId)
+      } finally {
+        setBusy((current) => ({ ...current, loadingPreview: false }))
+      }
+    },
     [getApiToken],
   )
 
   function handlePrimaryResume(resumeId) {
-    runAction(async () => {
+    runAction('savingResume', async () => {
       await makeResumePrimary(getApiToken, resumeId)
       loadContext()
     })
@@ -225,7 +265,7 @@ export function WorkspacePage() {
       return
     }
 
-    runAction(async () => {
+    runAction('savingResume', async () => {
       await deleteResume(getApiToken, resumeId)
       setDraftResume(null)
       loadContext()
@@ -267,7 +307,7 @@ export function WorkspacePage() {
       {needsOnboarding ? (
         <OnboardingFlow
           resume={draftResume}
-          busy={busy}
+          busy={busy.savingResume}
           error={actionError}
           onUpload={handleUpload}
           onManual={handleManual}
@@ -288,7 +328,6 @@ export function WorkspacePage() {
         <ProjectWorkspace
           project={activeProject}
           busy={busy}
-          pendingMessage={pendingChatMessage}
           onSelectTemplate={handleTemplateSelect}
           onSendMessage={handleProjectMessage}
           onDownloadPdf={handleProjectPdf}
@@ -297,7 +336,7 @@ export function WorkspacePage() {
       )}
 
       {showProjectDialog ? (
-        <ProjectDialog busy={busy} onClose={() => setShowProjectDialog(false)} onSubmit={handleCreateProject} />
+        <ProjectDialog busy={busy.creatingProject} onClose={() => setShowProjectDialog(false)} onSubmit={handleCreateProject} />
       ) : null}
     </WorkspaceShell>
   )

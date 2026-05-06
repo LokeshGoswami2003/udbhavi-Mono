@@ -13,7 +13,23 @@ function notFound() {
   return error;
 }
 
-function toResumeResponse(resume) {
+function toExtractionResponse(extraction, { includeRawText = true } = {}) {
+  if (!extraction) {
+    return extraction;
+  }
+
+  const value = extraction.toObject ? extraction.toObject() : extraction;
+
+  return {
+    ...value,
+    rawText: includeRawText ? value.rawText : undefined,
+    sourceLinks: includeRawText ? value.sourceLinks : undefined,
+    linkCount: value.links?.length || 0,
+    sourceLinkCount: value.sourceLinks?.length || 0,
+  };
+}
+
+function toResumeResponse(resume, options = {}) {
   return {
     id: resume.id,
     label: resume.label,
@@ -26,7 +42,7 @@ function toResumeResponse(resume) {
           size: resume.file.size,
         }
       : undefined,
-    extraction: resume.extraction,
+    extraction: toExtractionResponse(resume.extraction, options),
     resumeData: resume.resumeData,
     updatedAt: resume.updatedAt,
   };
@@ -34,11 +50,21 @@ function toResumeResponse(resume) {
 
 export async function listResumes(userId) {
   const resumes = await Resume.find({ userId, deletedAt: null }).sort({ isPrimary: -1, updatedAt: -1 });
-  return resumes.map(toResumeResponse);
+  return resumes.map((resume) => toResumeResponse(resume, { includeRawText: false }));
 }
 
 export async function getResumeForUser({ userId, resumeId }) {
   const resume = await Resume.findOne({ _id: resumeId, userId, deletedAt: null });
+
+  if (!resume) {
+    throw notFound();
+  }
+
+  return resume;
+}
+
+export async function getLatestResumeForUser(userId) {
+  const resume = await Resume.findOne({ userId, deletedAt: null }).sort({ updatedAt: -1 });
 
   if (!resume) {
     throw notFound();
@@ -63,7 +89,7 @@ export async function createUploadedResume({ userId, file, requestId }) {
     fileSize: file.size,
   });
 
-  const extracted = await extractResume(file);
+  const extracted = await extractResume(file, { requestId });
   const fileId = await saveResumeFile(file);
   const hasPrimary = await Resume.exists({ userId, isPrimary: true, deletedAt: null });
 
@@ -85,6 +111,8 @@ export async function createUploadedResume({ userId, file, requestId }) {
       parser: extracted.parser,
       rawText: extracted.rawText,
       links: extracted.links,
+      sourceLinks: extracted.sourceLinks,
+      extractionQuality: extracted.extractionQuality,
       parsedAt: new Date(),
     },
     resumeData: extracted.resumeData,
@@ -100,6 +128,9 @@ export async function createUploadedResume({ userId, file, requestId }) {
     userId: userId.toString(),
     resumeId: resume.id,
     linkCount: extracted.links.length,
+    sourceLinkCount: extracted.sourceLinks.length,
+    embeddedLinkCount: extracted.extractionQuality.embeddedLinkCount,
+    visibleLinkCount: extracted.extractionQuality.visibleLinkCount,
   });
 
   return toResumeResponse(resume);
@@ -117,6 +148,14 @@ export async function createManualResume({ userId, body }) {
       parser: "manual",
       rawText: "",
       links: [],
+      sourceLinks: [],
+      extractionQuality: {
+        rawTextChars: 0,
+        visibleLinkCount: 0,
+        embeddedLinkCount: 0,
+        totalLinkCount: 0,
+        parserWarnings: [],
+      },
       parsedAt: new Date(),
     },
     resumeData: normalizeResumeData(body.resumeData),

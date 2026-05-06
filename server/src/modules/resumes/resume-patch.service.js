@@ -46,6 +46,14 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function shouldCreateArray(nextSegment) {
+  return nextSegment === "-" || /^\d+$/.test(String(nextSegment));
+}
+
+function createPatchParent(nextSegment) {
+  return shouldCreateArray(nextSegment) ? [] : {};
+}
+
 function validateValue(value, segments = []) {
   const maxLength = segments.includes("bullets") ? 700 : 3000;
 
@@ -65,14 +73,25 @@ function getContainer(target, segments, op) {
   const key = segments.at(-1);
   let current = target;
 
-  for (const segment of parentSegments) {
+  for (const [index, segment] of parentSegments.entries()) {
+    const nextSegment = parentSegments[index + 1] || key;
+
     if (Array.isArray(current)) {
-      const index = Number(segment);
-      if (!Number.isInteger(index) || index < 0 || index >= current.length) {
+      const arrayIndex = Number(segment);
+      if (!Number.isInteger(arrayIndex) || arrayIndex < 0 || arrayIndex > current.length) {
         throw patchError(`Patch ${op} parent does not exist.`);
       }
-      current = current[index];
+      if (arrayIndex === current.length) {
+        if (op !== "add") {
+          throw patchError(`Patch ${op} parent does not exist.`);
+        }
+        current.push(createPatchParent(nextSegment));
+      }
+      current = current[arrayIndex];
     } else if (current && typeof current === "object" && segment in current) {
+      current = current[segment];
+    } else if (current && typeof current === "object" && op === "add") {
+      current[segment] = createPatchParent(nextSegment);
       current = current[segment];
     } else {
       throw patchError(`Patch ${op} parent does not exist.`);

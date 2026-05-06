@@ -20,12 +20,15 @@
     "express-oauth2-jwt-bearer": "^1.8.0",
     "express-rate-limit": "^8.4.1",
     "helmet": "^8.1.0",
+    "fast-xml-parser": "^5.7.2",
+    "jszip": "^3.10.1",
     "mammoth": "^1.12.0",
     "mongodb": "^7.2.0",
     "mongoose": "^9.6.1",
     "morgan": "^1.10.1",
     "multer": "^2.1.1",
     "node-latex-compiler": "^1.0.5",
-    "pdf-parse": "^2.4.5"
+    "pdf-parse": "^2.4.5",
+    "pdfjs-dist": "^5.4.296"
   }
 }

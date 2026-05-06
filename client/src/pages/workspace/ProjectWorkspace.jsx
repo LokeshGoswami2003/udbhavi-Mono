@@ -8,7 +8,7 @@ import {
   SendHorizontal,
   Sparkles,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '../../components/ui/Button'
 
 const templates = [
@@ -183,7 +183,7 @@ function templatePreviewHtml(template) {
 </html>`
 }
 
-export function ProjectWorkspace({ project, busy, pendingMessage, onSelectTemplate, onSendMessage, onDownloadPdf, onLoadPreviewPdf }) {
+export function ProjectWorkspace({ project, busy, onSelectTemplate, onSendMessage, onDownloadPdf, onLoadPreviewPdf }) {
   if (!project) {
     return (
       <section className="grid h-full place-items-center overflow-auto px-6">
@@ -240,9 +240,9 @@ export function ProjectWorkspace({ project, busy, pendingMessage, onSelectTempla
                       ))}
                     </div>
                   </div>
-                  <Button as="button" type="button" variant="accent" className="min-h-10 shrink-0 px-3 py-2 text-xs" onClick={() => onSelectTemplate(project.id, template.id)} disabled={busy}>
+                  <Button as="button" type="button" variant="accent" className="min-h-10 shrink-0 px-3 py-2 text-xs" onClick={() => onSelectTemplate(project.id, template.id)} disabled={busy.selectingTemplate}>
                     <CheckCircle2 size={15} aria-hidden="true" />
-                    Use template
+                    {busy.selectingTemplate ? 'Generating' : 'Use template'}
                     <ArrowRight size={15} aria-hidden="true" />
                   </Button>
                 </div>
@@ -264,9 +264,9 @@ export function ProjectWorkspace({ project, busy, pendingMessage, onSelectTempla
       </header>
 
       <div className="grid min-h-0 lg:grid-cols-[minmax(0,1fr)_minmax(420px,32vw)] xl:grid-cols-[minmax(0,1fr)_500px]">
-        <PdfPreview project={project} onLoadPreviewPdf={onLoadPreviewPdf} />
+        <PdfPreview project={project} busy={busy} onLoadPreviewPdf={onLoadPreviewPdf} />
 
-        <ChatPanel project={project} busy={busy} pendingMessage={pendingMessage} onSendMessage={onSendMessage} />
+        <ChatPanel project={project} busy={busy} onSendMessage={onSendMessage} />
       </div>
     </section>
   )
@@ -280,27 +280,40 @@ function PreviewActions({ project, busy, onDownloadPdf }) {
       <button
         type="button"
         onClick={() => onDownloadPdf(project.id)}
-        disabled={!hasLatex || busy}
+        disabled={!hasLatex || busy.downloadingPdf}
         className="inline-flex min-h-10 items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-600 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10"
       >
-        <Printer size={15} aria-hidden="true" />
-        Download PDF
+        {busy.downloadingPdf ? <Loader2 className="animate-spin" size={15} aria-hidden="true" /> : <Printer size={15} aria-hidden="true" />}
+        {busy.downloadingPdf ? 'Preparing' : 'Download PDF'}
       </button>
     </div>
   )
 }
 
-function PdfPreview({ project, onLoadPreviewPdf }) {
+function PdfPreview({ project, busy, onLoadPreviewPdf }) {
   const [pdfUrl, setPdfUrl] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const pdfUrlRef = useRef('')
+  const compiledAt = project.ai?.pdf?.compiledAt || ''
+  const hasLatexSource = Boolean(project.ai?.latexSource)
+  const previewStatus = busy.selectingTemplate || busy.sendingMessage || project.status === 'processing'
+    ? 'Updating resume...'
+    : loading || busy.loadingPreview
+      ? 'Compiling PDF...'
+      : pdfUrl
+        ? 'Preview ready'
+        : 'Building resume...'
 
   useEffect(() => {
     let isActive = true
-    let objectUrl = ''
 
     async function loadPdf() {
-      if (!project?.id || project.status !== 'ready' || !project.ai?.latexSource) {
+      if (!project?.id || project.status !== 'ready' || !hasLatexSource) {
+        if (pdfUrlRef.current) {
+          URL.revokeObjectURL(pdfUrlRef.current)
+          pdfUrlRef.current = ''
+        }
         setPdfUrl('')
         setError('')
         return
@@ -311,9 +324,13 @@ function PdfPreview({ project, onLoadPreviewPdf }) {
 
       try {
         const blob = await onLoadPreviewPdf(project.id)
-        objectUrl = URL.createObjectURL(blob)
+        const objectUrl = URL.createObjectURL(blob)
 
         if (isActive) {
+          if (pdfUrlRef.current) {
+            URL.revokeObjectURL(pdfUrlRef.current)
+          }
+          pdfUrlRef.current = objectUrl
           setPdfUrl(objectUrl)
         } else {
           URL.revokeObjectURL(objectUrl)
@@ -334,11 +351,14 @@ function PdfPreview({ project, onLoadPreviewPdf }) {
 
     return () => {
       isActive = false
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl)
-      }
     }
-  }, [onLoadPreviewPdf, project?.id, project?.status, project?.ai?.latexSource])
+  }, [compiledAt, hasLatexSource, onLoadPreviewPdf, project?.activeVersionId, project?.id, project?.status])
+
+  useEffect(() => () => {
+    if (pdfUrlRef.current) {
+      URL.revokeObjectURL(pdfUrlRef.current)
+    }
+  }, [])
 
   return (
     <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-[#111827]">
@@ -348,14 +368,22 @@ function PdfPreview({ project, onLoadPreviewPdf }) {
           PDF preview
         </div>
         <span className="rounded-md bg-white/10 px-2 py-1 text-[11px] font-black uppercase text-slate-200">
-          Compiled
+          {previewStatus}
         </span>
       </div>
 
       <div className="min-h-0 bg-[#1f2937] p-4">
         <div className="h-full overflow-hidden rounded-sm bg-white shadow-[0_18px_50px_rgba(0,0,0,0.45)]">
           {pdfUrl ? (
-            <iframe title="Resume PDF preview" src={pdfUrl} className="h-full w-full border-0 bg-white" />
+            <div className="relative h-full">
+              <iframe title="Resume PDF preview" src={pdfUrl} className="h-full w-full border-0 bg-white" />
+              {loading || busy.loadingPreview || busy.sendingMessage || busy.selectingTemplate ? (
+                <div className="absolute right-3 top-3 flex items-center gap-2 rounded-md bg-slate-950/80 px-3 py-2 text-xs font-bold text-white shadow-lg">
+                  <Loader2 className="animate-spin" size={14} aria-hidden="true" />
+                  {previewStatus}
+                </div>
+              ) : null}
+            </div>
           ) : (
             <div className="grid h-full place-items-center bg-slate-950 p-8 text-center text-sm font-bold text-slate-200">
               {error ? (
@@ -363,7 +391,7 @@ function PdfPreview({ project, onLoadPreviewPdf }) {
               ) : (
                 <div>
                   <Loader2 className="mx-auto mb-3 animate-spin text-blue-300" size={22} aria-hidden="true" />
-                  <p>{loading ? 'Compiling PDF preview...' : 'Building your resume draft.'}</p>
+                  <p>{previewStatus}</p>
                 </div>
               )}
             </div>
@@ -374,7 +402,14 @@ function PdfPreview({ project, onLoadPreviewPdf }) {
   )
 }
 
-function ChatPanel({ project, busy, pendingMessage, onSendMessage }) {
+function ChatPanel({ project, busy, onSendMessage }) {
+  const messagesEndRef = useRef(null)
+  const feedbackActions = (project.ai?.feedback || []).slice(0, 3)
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ block: 'end' })
+  }, [busy.sendingMessage, project.ai?.messages?.length])
+
   function handleSubmit(event) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
@@ -390,7 +425,7 @@ function ChatPanel({ project, busy, pendingMessage, onSendMessage }) {
 
   return (
     <aside className="flex min-h-0 flex-col border-t border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900 lg:border-l lg:border-t-0">
-      <div className="shrink-0 border-b border-slate-200 p-4 dark:border-white/10">
+      <div className="shrink-0 border-b border-slate-200 px-4 py-3 dark:border-white/10">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm font-black">
             <Bot size={18} className="text-blue-600 dark:text-blue-300" aria-hidden="true" />
@@ -400,24 +435,35 @@ function ChatPanel({ project, busy, pendingMessage, onSendMessage }) {
             {project.status}
           </span>
         </div>
-        <div className="mt-3 flex max-h-32 gap-2 overflow-x-auto pb-1 lg:max-h-none lg:grid lg:grid-cols-1 lg:overflow-visible lg:pb-0">
-          {(project.ai?.feedback || []).map((item) => (
+        {feedbackActions.length ? (
+          <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
+            {feedbackActions.map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => onSendMessage(project.id, item)}
+                disabled={busy.sendingMessage}
+                className="shrink-0 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-left text-[11px] font-black leading-4 text-blue-900 transition hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-70 dark:border-blue-300/20 dark:bg-blue-500/10 dark:text-blue-100 dark:hover:bg-blue-500/15"
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
+            {['Paste job description', 'Improve wording', 'Fix links'].map((item) => (
             <button
               key={item}
               type="button"
               onClick={() => onSendMessage(project.id, item)}
-              disabled={busy}
-              className="min-w-64 rounded-lg bg-blue-50 p-3 text-left text-sm font-semibold leading-5 text-blue-950 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-blue-500/10 dark:text-blue-100 dark:hover:bg-blue-500/15 lg:min-w-0"
+              disabled={busy.sendingMessage}
+              className="shrink-0 rounded-md bg-slate-100 px-2.5 py-1.5 text-[11px] font-black text-slate-600 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-white/10 dark:text-slate-300 dark:hover:bg-white/15"
             >
               {item}
             </button>
           ))}
-          {!project.ai?.feedback?.length ? (
-            <p className="rounded-lg bg-slate-50 p-3 text-sm leading-5 text-slate-600 dark:bg-white/5 dark:text-slate-300">
-              Once the draft is ready, use this chat to change sections, add missing context, or tune the resume for a role.
-            </p>
-          ) : null}
-        </div>
+          </div>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
@@ -425,17 +471,13 @@ function ChatPanel({ project, busy, pendingMessage, onSendMessage }) {
           {(project.ai?.messages || []).map((message, index) => (
             <ChatMessage key={`${message.role}-${index}`} message={message} busy={busy} onQuickReply={(reply) => onSendMessage(project.id, reply)} />
           ))}
-          {pendingMessage ? (
-            <div className="ml-auto max-w-[92%] rounded-lg bg-slate-100 p-3 text-sm leading-6 dark:bg-white/10">
-              {pendingMessage}
-            </div>
-          ) : null}
-          {busy && project.templateId ? (
+          {busy.sendingMessage && project.templateId ? (
             <div className="mr-auto flex max-w-[92%] items-center gap-2 rounded-lg bg-blue-50 p-3 text-sm font-bold text-blue-950 dark:bg-blue-500/10 dark:text-blue-100">
               <Loader2 className="animate-spin" size={16} aria-hidden="true" />
               Updating the draft
             </div>
           ) : null}
+          <div ref={messagesEndRef} />
         </div>
       </div>
 
@@ -443,13 +485,13 @@ function ChatPanel({ project, busy, pendingMessage, onSendMessage }) {
         <div className="flex items-end gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm dark:border-white/10 dark:bg-slate-950">
           <textarea
             name="message"
-            rows="3"
+            rows="2"
             placeholder="Ask for a change or add missing context..."
-            className="max-h-40 min-h-20 flex-1 resize-y bg-transparent px-2 py-2 text-sm leading-6 outline-none"
-            disabled={busy}
+            className="max-h-32 min-h-14 flex-1 resize-y bg-transparent px-2 py-2 text-sm leading-6 outline-none"
+            disabled={busy.sendingMessage}
           />
-          <Button as="button" type="submit" variant="accent" className="min-h-12 px-4 py-2" disabled={busy} aria-label="Send message">
-            <SendHorizontal size={17} aria-hidden="true" />
+          <Button as="button" type="submit" variant="accent" className="min-h-12 px-4 py-2" disabled={busy.sendingMessage} aria-label="Send message">
+            {busy.sendingMessage ? <Loader2 className="animate-spin" size={17} aria-hidden="true" /> : <SendHorizontal size={17} aria-hidden="true" />}
           </Button>
         </div>
       </form>
@@ -468,9 +510,12 @@ function ChatMessage({ message, busy, onQuickReply }) {
       {!isUser && metadata.changeSummary?.length ? (
         <div className="mt-3 rounded-md bg-white/70 p-2 text-xs leading-5 text-slate-700 dark:bg-slate-950/35 dark:text-slate-200">
           <p className="font-black">Changed</p>
-          <ul className="mt-1 list-disc space-y-1 pl-4">
+          <ul className="mt-1 space-y-1">
             {metadata.changeSummary.map((item) => (
-              <li key={item}>{item}</li>
+              <li key={item} className="flex gap-2">
+                <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-300" size={13} aria-hidden="true" />
+                <span>{item}</span>
+              </li>
             ))}
           </ul>
         </div>
@@ -487,19 +532,22 @@ function ChatMessage({ message, busy, onQuickReply }) {
       ) : null}
 
       {!isUser && metadata.suggestions?.length ? (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {metadata.suggestions.slice(0, 3).map((suggestion) => (
-            <button
-              key={suggestion}
-              type="button"
-              onClick={() => onQuickReply(suggestion)}
-              disabled={busy}
-              className="rounded-md bg-blue-100 px-2 py-1 text-left text-[11px] font-bold text-blue-800 transition hover:bg-blue-200 disabled:opacity-60 dark:bg-blue-400/15 dark:text-blue-100 dark:hover:bg-blue-400/20"
-            >
-              {suggestion}
-            </button>
-          ))}
-        </div>
+        <details className="mt-3 rounded-md bg-blue-100/70 px-2 py-1.5 text-xs font-bold text-blue-900 dark:bg-blue-400/15 dark:text-blue-100">
+          <summary className="cursor-pointer">Suggestions ({metadata.suggestions.length})</summary>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {metadata.suggestions.slice(0, 4).map((suggestion) => (
+              <button
+                key={suggestion}
+                type="button"
+                onClick={() => onQuickReply(suggestion)}
+                disabled={busy.sendingMessage}
+                className="rounded-md bg-white px-2 py-1 text-left text-[11px] font-bold text-blue-800 transition hover:bg-blue-50 disabled:opacity-60 dark:bg-white/5 dark:text-blue-100 dark:hover:bg-white/10"
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
+        </details>
       ) : null}
 
       {!isUser && metadata.quickReplies?.length ? (
@@ -509,7 +557,7 @@ function ChatMessage({ message, busy, onQuickReply }) {
               key={reply}
               type="button"
               onClick={() => onQuickReply(reply)}
-              disabled={busy}
+              disabled={busy.sendingMessage}
               className="rounded-md border border-blue-200 bg-white px-2 py-1 text-[11px] font-black text-blue-700 transition hover:border-blue-400 hover:bg-blue-50 disabled:opacity-60 dark:border-blue-300/20 dark:bg-white/5 dark:text-blue-100 dark:hover:bg-white/10"
             >
               {reply}

@@ -124,8 +124,10 @@ Run npm run smoke:bedrock from server/ to verify readiness.
 Treat the app's Bedrock API key as the source of truth; the local AWS CLI may be configured for a different account.
 Mock AI responses are removed from the runtime path; provider failures now return clear API errors.
 Uploaded PDF/DOCX files are sent directly to MiniMax M2.5 through Bedrock during generation when available, with local parser text used only as backup context.
-The current generation contract is ResumeData-first: the LLM receives the uploaded source document when available, fallback raw text/links, project context, and schema instructions, then returns structured `ResumeData`, feedback, and next actions. The backend owns final LaTeX rendering, PDF compilation, preview, and download.
-Chat edits use the full stored conversation and current `ResumeData`, but the LLM may only return assistant text, suggestions/questions/quick replies, and safe JSON Patch-style operations against the resume schema.
+Resume extraction stores trusted `sourceLinks` from visible text, PDF annotations, and DOCX hyperlink relationships. The backend reconciles those trusted links into `ResumeData` after LLM extraction/chat, and ambiguous links remain in `sourceLinks` instead of being forced into project or certificate fields. Technology/library domains such as Socket.io are blocked from contact website placement.
+The current generation contract is ResumeData-first: the LLM receives the uploaded source document when available, fallback raw text, trusted `sourceLinks`, project context, and schema instructions, then returns structured `ResumeData`, feedback, and next actions. The backend owns final LaTeX rendering, PDF compilation, preview, and download.
+Every chat-edit call sends the user's latest saved resume evidence, saved extracted `ResumeData`, current project structured `ResumeData`, latest user message, and full stored conversation history. The latest saved resume and `sourceLinks` are factual evidence, while `currentResumeData` is the editable project draft. The LLM may only return assistant text, suggestions/questions/quick replies, and safe JSON Patch-style operations against the resume schema.
+Greeting-only chat turns are answered as small talk and do not call the LLM patch flow, rerender the resume, or claim that the resume was updated.
 ```
 
 ## Preview Rendering Direction
@@ -146,10 +148,14 @@ Current implementation:
 - The selected template stays on the backend as the formatting contract.
 - Server stores `project.ai.resumeData` as the project draft source of truth.
 - Server renders `project.ai.latexSource` from fixed backend templates and compiles it into a real PDF through the no-Docker Node Tectonic compiler path.
+- Each successful initial generation and resume-changing chat edit creates a `ResumeVersion`, updates `project.activeVersionId`, and keeps `project.ai.resumeData` / `project.ai.latexSource` as the latest cache.
+- Rendered PDFs are cached in MongoDB GridFS under `project.ai.pdf` with a LaTeX hash, compiler, compiled time, and page count. Preview and download reuse the cached PDF when the hash matches and never call the LLM.
 - Client loads `/projects/:projectId/preview.pdf` with an Authorization header and previews the returned PDF blob.
-- Chat edits send the full stored conversation and current `ResumeData` so MiniMax can ask follow-up questions and return structured patch operations.
+- Chat edits send the latest saved resume evidence, saved extracted resume data, full stored conversation, latest user message, and current project `ResumeData` so MiniMax can preserve context, ask follow-up questions, and return structured patch operations.
+- The client applies returned project payloads immediately after template selection and chat edits instead of reloading the entire workspace context.
+- The preview keeps the previous PDF visible while a new cached/compiled PDF is loading and refreshes when `activeVersionId` or `ai.pdf.compiledAt` changes.
 - The workspace shell is viewport-bound; sidebar, preview, and chat scroll independently.
-- Chat shows pending user input and AI activity while the Bedrock request is running.
+- Chat shows pending user input and AI activity while the Bedrock request is running. Recommendation prompts stay as compact actions so they do not reduce the message space.
 - The regex LaTeX-to-HTML renderer is legacy fallback only and is not used for the main product preview.
 
 ## Workspace UX Model

@@ -133,7 +133,7 @@ function renderEducation(education = []) {
 
 function renderBody(data, template) {
   const basics = data.basics || {};
-  const contact = [basics.email, basics.phone, basics.location, basics.linkedin, basics.github, basics.website].filter(Boolean);
+  const contact = [basics.email, basics.phone, basics.location, basics.linkedin, basics.github, basics.portfolio, basics.website].filter(Boolean);
   const includeExperience = template.id === "modern-compact";
 
   return `
@@ -317,6 +317,7 @@ export function renderResumeLatex({ resumeData, templateId }) {
     location ? latexEsc(location) : "",
     basics.linkedin ? latexRawHref(basics.linkedin, "\\faLinkedin\\ LinkedIn") : "",
     basics.github ? latexRawHref(basics.github, "\\faGithub\\ GitHub") : "",
+    basics.portfolio ? latexRawHref(basics.portfolio, "\\faLink\\ Portfolio") : "",
     basics.website ? latexRawHref(basics.website, "\\faLink\\ Website") : "",
   ].filter(Boolean).join(" \\textperiodcentered\\ ");
   const skills = (data.skills || [])

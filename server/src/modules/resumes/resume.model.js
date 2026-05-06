@@ -1,11 +1,20 @@
 import mongoose from "mongoose";
 import { emptyResumeData } from "./resume-data.js";
 
-const linkSchema = new mongoose.Schema(
+const sourceLinkSchema = new mongoose.Schema(
   {
     url: { type: String, required: true },
+    normalizedUrl: { type: String, required: true },
     label: String,
-    source: { type: String, enum: ["text", "metadata"], default: "text" },
+    type: {
+      type: String,
+      enum: ["email", "phone", "linkedin", "github", "portfolio", "website", "project", "certificate", "leetcode", "coding_profile", "other"],
+      default: "other",
+    },
+    source: { type: String, enum: ["pdf_annotation", "docx_relationship", "visible_text", "manual"], default: "visible_text" },
+    context: String,
+    pageNumber: Number,
+    confidence: Number,
   },
   { _id: false },
 );
@@ -28,7 +37,9 @@ const resumeSchema = new mongoose.Schema(
       status: { type: String, enum: ["pending", "processing", "ready", "failed"], default: "pending" },
       parser: { type: String, enum: ["pdf-parse", "mammoth", "manual"], default: "manual" },
       rawText: String,
-      links: [linkSchema],
+      links: [String],
+      sourceLinks: [sourceLinkSchema],
+      extractionQuality: mongoose.Schema.Types.Mixed,
       parsedAt: Date,
       errorCode: String,
     },

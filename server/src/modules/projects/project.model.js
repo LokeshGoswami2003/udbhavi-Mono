@@ -22,6 +22,13 @@ const projectSchema = new mongoose.Schema(
       resumeData: mongoose.Schema.Types.Mixed,
       renderedHtml: String,
       latexSource: String,
+      pdf: {
+        fileId: mongoose.Schema.Types.ObjectId,
+        latexHash: String,
+        compiledAt: Date,
+        compiler: String,
+        pageCount: Number,
+      },
       feedback: [String],
       nextAction: String,
       messages: [
@@ -33,7 +40,7 @@ const projectSchema = new mongoose.Schema(
         },
       ],
     },
-    activeVersionId: mongoose.Schema.Types.ObjectId,
+    activeVersionId: { type: mongoose.Schema.Types.ObjectId, ref: "ResumeVersion" },
     deletedAt: Date,
   },
   { timestamps: true },
